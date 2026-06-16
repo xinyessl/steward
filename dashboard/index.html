@@ -496,10 +496,7 @@ function acceptSpec(spec){
     loadBoard(); loadInbox(true);
   },{title:'确认「通过验收」'+spec+'？',okText:'通过验收',ok:true});
 }
-function rejectSpec(spec){   // 打回 = 切到终端、往当前窗口预填验收语，写问题后回车即触发 /accept 修复闭环
-  setMode();
-  setTimeout(()=>{ const w=windows[activeIdx]||windows[0]; if(w) fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'验收 '+spec+'：',enter:false})}).catch(()=>{}); },700);
-}
+function rejectSpec(spec){ sendToTerm('验收 '+spec+'：', false); }   // 打回 = 预填验收语，写问题后回车触发 /accept 修复闭环
 // —— 看板行内操作：默认收起，点「编辑」展开；纯数据(状态/优先级)直接写；删除/合并(有语义后果)预填编排器 ——
 function toggleRowEdit(id){ const el=document.getElementById('spec-row-'+id); if(el) el.classList.toggle('editing'); }
 async function patchSpec(spec,field,value,el){
@@ -510,7 +507,17 @@ async function patchSpec(spec,field,value,el){
     toast(spec+' 的'+(field==='status'?'状态':'优先级')+' → '+value); loadBoard();
   }catch(e){ toast('失败：'+e.message); }
 }
-function prefillTerm(text){ setMode(); setTimeout(()=>{ const w=windows[activeIdx]||windows[0]; if(w) fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text,enter:false})}).catch(()=>{}); },700); }
+// 统一发送到终端：无窗口先自动开一个、等就绪再发、仍失败给 toast（修 #4 静默失效 + 700ms 竞态）
+async function sendToTerm(text, enter){
+  if(!PROJECT){ toast('请先「新增项目」'); return; }
+  const reused=(termBuiltFor===PROJECT && windows.length>0);
+  await loadTerminal();   // 保证当前项目有终端窗口：已建则复用，没建会自动开一个
+  const w=windows[activeIdx]||windows[0];
+  if(!w){ toast(ttydReady?'打不开终端窗口，请重试':'内嵌终端不可用，请先 brew install ttyd 再重启'); return; }
+  const fire=()=>fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text,enter:!!enter})}).catch(()=>toast('发送失败'));
+  if(reused) fire(); else setTimeout(fire,900);   // 已有窗口立即发；新建窗口给 claude 一点启动时间
+}
+function prefillTerm(text){ sendToTerm(text,false); }
 function delSpec(spec,title){
   uiConfirm('删除 spec 牵涉依赖/代码/测试，交给 AI 按 §4.6 处理更稳妥。点确定会切到终端、预填一条删除指令，你确认后回车执行——不会直接删文件。',()=>{
     prefillTerm('请删除 spec '+spec+'（'+title+'）：先按 CLAUDE.md §4.6 算影响面（谁 depends_on 它、共享表/接口/同模块），列出受影响项给我确认后，再删 spec 文件与相关代码/测试，并更新受影响 spec。');
@@ -692,7 +699,7 @@ async function toggleCmds(){
 }
 function useCmd(name){
   document.getElementById('cmd-pop').classList.remove('on');
-  const w=windows[activeIdx]||windows[0]; if(w) fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'/'+name+' ',enter:false})}).catch(()=>{});
+  sendToTerm('/'+name+' ', false);
 }
 async function toggleHistory(){
   const pop=document.getElementById('hist-pop');
