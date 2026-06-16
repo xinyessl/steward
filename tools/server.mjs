@@ -555,10 +555,23 @@ const server = http.createServer((req, res) => {
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
       let b = {}; try { b = JSON.parse(buf); } catch {}
       const id = (b.id || '').trim().replace(/[^a-zA-Z0-9_-]/g, ''), name = (b.name || '').trim(), dest = (b.path || '').trim(), sessionId = (b.sessionId || '').trim();
-      const mode = (b.mode || 'existing').trim(), prdPath = (b.prdPath || '').trim(), protoDir = (b.protoDir || '').trim();
+      const mode = (b.mode || 'existing').trim(), prdPath = (b.prdPath || '').trim(), protoDir = (b.protoDir || '').trim(), gitUrl = (b.gitUrl || '').trim();
       if (!id || !name || !dest) return send(res, 400, JSON.stringify({ error: 'id / 名称 / 路径 均必填（id 仅限字母数字-_）' }));
       if (!path.isAbsolute(dest)) return send(res, 400, JSON.stringify({ error: '路径需为绝对路径' }));
       if (loadProjects().find(p => p.id === id)) return send(res, 400, JSON.stringify({ error: '项目 id 已存在' }));
+      // Git 导入：先 clone 到 dest（异步，不阻塞事件循环），成功后再走下面的纳管流程
+      if (mode === 'git') {
+        if (!/^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/.test(gitUrl)) return send(res, 400, JSON.stringify({ error: 'Git 地址格式不对（需 http(s):// / git@ / ssh:// / file://）' }));
+        let nonEmpty = false; try { nonEmpty = fs.existsSync(dest) && fs.readdirSync(dest).length > 0; } catch {}
+        if (nonEmpty) return send(res, 400, JSON.stringify({ error: '克隆目标目录已存在且非空，请换一个空目录' }));
+        try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch {}
+        const git = spawn('git', ['clone', gitUrl, dest], { stdio: 'ignore' });   // 不覆盖 env：继承 SSH/凭证；args 数组无 shell 注入
+        git.on('error', e => send(res, 500, JSON.stringify({ error: '无法启动 git：' + e.message })));
+        git.on('close', code => { if (code !== 0) return send(res, 500, JSON.stringify({ error: 'git clone 失败（退出码 ' + code + '）：检查地址 / 网络 / 凭证' })); finalize(); });
+        return;
+      }
+      finalize();
+      function finalize() {
       try {
         // 判断是否"导入已有代码库"：目录已存在且里面有非脚手架内容（用于决定是否提示扫描建 spec）
         let existed = false; try { existed = fs.existsSync(dest) && fs.readdirSync(dest).some(n => !['docs', 'tools', '.claude', 'CLAUDE.md', '.git'].includes(n)); } catch {}
@@ -580,6 +593,7 @@ const server = http.createServer((req, res) => {
         let specCount = 0; try { specCount = fs.readdirSync(path.join(dest, 'docs/specs')).filter(n => n.endsWith('.md') && !['_TEMPLATE.md', 'README.md'].includes(n)).length; } catch {}
         send(res, 200, JSON.stringify({ ok: true, id, existed, mode, prdImported, protoImported, specCount }));
       } catch (e) { send(res, 500, JSON.stringify({ error: e.message })); }
+      }   // end finalize
     });
     return;
   }

@@ -63,6 +63,7 @@ bash tools/start.sh          # → http://127.0.0.1:5178
 1. In the console click **"Add project"**, then pick the **project type**:
    - **Existing project (has code)** → point the path at your current repo (only team files are added; your code is untouched).
    - **New project (greenfield)** → set the path to a new directory and directly select a **PRD file** + a **prototype folder**; on creation they're copied into `docs/PRD.*` and `docs/prototype/`.
+   - **Git repo** → paste a clone URL (https / git@ / ssh); it's `git clone`d to a local dir using your machine's git credentials, then imported as existing code.
 2. Open a **terminal window** for the project and follow your starting point (the console offers to run it for you after creation):
    - **Existing** → `/scan` reverse-reads the source and generates a `docs/specs/*.md` baseline by feature module (draft, awaiting review).
    - **Greenfield** → `/init` picks the stack + scaffolds a minimal skeleton, then `/spec` decomposes the PRD into a spec tree (here **PRD + prototype = source of truth**).
