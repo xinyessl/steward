@@ -712,6 +712,7 @@ for (const p of loadProjects()) watchProject(p);
 // 避免「spawn 子进程」与「监听 socket 接受连接」在同一瞬间抢 fd，导致该实例后续请求体处理异常（间歇 400）。
 for (const p of loadProjects()) genBoard(p.path);
 adoptWindows();   // 接管上次遗留/重启前存活的 tmux 会话
+server.on('clientError', (err, socket) => { try { console.error('[clientError]', err?.code, err?.message, 'bytesParsed=', err?.bytesParsed, 'rawPacket=', err?.rawPacket ? JSON.stringify(err.rawPacket.toString('utf8').slice(0, 200)) : ''); } catch {} try { if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n'); } catch {} });
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`\n  Steward 控制台（多项目）： http://127.0.0.1:${PORT}`);
   console.log(TTYD_BIN ? '  内嵌终端(ttyd) 就绪：每个项目可开多个对话窗口' : '  内嵌终端未启用：未找到 ttyd（brew install ttyd 后重启）');
