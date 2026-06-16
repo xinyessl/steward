@@ -11,7 +11,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import net from 'node:net';
@@ -145,7 +145,7 @@ function adoptWindows() {
 // —— 窗口忙/闲检测 ——
 // 每 ~2.5s 抓 tmux 屏幕，剔掉会自走的状态灯（ccgotchi 宠物/用量条/模式行）后做差分：
 // 变了 = claude 正跑一个 turn（spinner 的秒数计时每秒在动）；没变 = 空闲等输入。忙→闲那一刻 = 刚完成，置 done。
-function capturePane(sess, full) { try { const a = ['-L', TMUX_SOCK, 'capture-pane', '-t', sess, '-p']; if (full) a.push('-S', '-'); return (spawnSync(TMUX_BIN, a, { encoding: 'utf8' }).stdout) || ''; } catch { return ''; } }
+function capturePane(sess, full) { return new Promise(resolve => { try { const a = ['-L', TMUX_SOCK, 'capture-pane', '-t', sess, '-p']; if (full) a.push('-S', '-'); execFile(TMUX_BIN, a, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }, (e, out) => resolve(out || '')); } catch { resolve(''); } }); }
 function titleFromPane(out) {  // 取最早一条用户输入（❯ 后有内容）作为会话话题，拼接换行续行抓全
   const lines = out.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -193,28 +193,30 @@ function confirmFromPane(out) {
   const tail = out.split('\n').slice(-22).join('\n');
   return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|↑\/↓ to select|Do you want to (proceed|continue)|是否(继续|确认|要)|确认[?？]|\bProceed\?|press \w+ to (confirm|continue)|❯\s*\d+\.\s|^\s*\d+[.:]\s+(Yes|No|是|否)/m.test(tail);
 }
-function pollWindows() {
-  if (!TMUX_BIN) return;
-  for (const w of openWindows.values()) {
-    if (!w.tmuxSess) continue;
-    const out = capturePane(w.tmuxSess);
-    if (!out) continue;                          // 本轮抓不到，保留旧状态
-    const sig = sigFromPane(out);
-    if (w.lastSig !== undefined) {
-      const busy = sig !== w.lastSig;
-      if (w.busy && !busy) { w.done = true; w.doneAt = Date.now(); }   // 忙→闲：完成
-      w.busy = busy;
-    } else { w.busy = false; }                   // 首轮：未知按闲（done 仅在真·忙→闲时触发，不会误报）
-    w.lastSig = sig;
-    w.activity = activityFromPane(out);
-    w.confirm = !w.busy && confirmFromPane(out);   // 空闲且在等确认/选择 → 红；否则空闲 → 黄
-    if (!w.title) {  // 会话话题（一次性）：resume 的读会话文件 preview，新窗口从全量屏幕抓第一句用户输入
-      if (w.sessionId) { try { w.title = sessionPreview(path.join(os.homedir(), '.claude', 'projects', encodeCwd((projById(w.projectId) || {}).path || ''), w.sessionId + '.jsonl')); } catch {} }
-      if (!w.title) w.title = titleFromPane(capturePane(w.tmuxSess, true));
-    }
+async function pollOne(w) {   // 单窗口状态：全异步，不阻塞事件循环
+  if (!w.tmuxSess) return;
+  const out = await capturePane(w.tmuxSess);
+  if (!out) return;                            // 本轮抓不到，保留旧状态
+  const sig = sigFromPane(out);
+  if (w.lastSig !== undefined) {
+    const busy = sig !== w.lastSig;
+    if (w.busy && !busy) { w.done = true; w.doneAt = Date.now(); }   // 忙→闲：完成
+    w.busy = busy;
+  } else { w.busy = false; }                   // 首轮：未知按闲（done 仅在真·忙→闲时触发，不会误报）
+  w.lastSig = sig;
+  w.activity = activityFromPane(out);
+  w.confirm = !w.busy && confirmFromPane(out);   // 空闲且在等确认/选择 → 红；否则空闲 → 黄
+  if (!w.title) {  // 会话话题（一次性）：resume 的读会话文件 preview，新窗口从全量屏幕抓第一句用户输入
+    if (w.sessionId) { try { w.title = sessionPreview(path.join(os.homedir(), '.claude', 'projects', encodeCwd((projById(w.projectId) || {}).path || ''), w.sessionId + '.jsonl')); } catch {} }
+    if (!w.title) w.title = titleFromPane(await capturePane(w.tmuxSess, true));
   }
 }
-setInterval(pollWindows, 2500);
+async function pollWindows() {   // 所有窗口并发抓取，整轮不阻塞
+  if (!TMUX_BIN) return;
+  await Promise.all([...openWindows.values()].map(w => pollOne(w).catch(() => {})));
+}
+// 自调度而非 setInterval：上一轮没跑完不会重叠堆积
+(function pollLoop() { Promise.resolve(pollWindows()).catch(() => {}).finally(() => setTimeout(pollLoop, 2500)); })();
 
 // ---- claude 会话发现（按项目 cwd 编码）----
 function encodeCwd(abs) { return abs.replace(/[/.]/g, '-'); }
@@ -283,7 +285,7 @@ function loadProjects() {
   catch { return []; }   // 空工具：还没纳管任何项目
 }
 function projById(id) { const ps = loadProjects(); return ps.find(p => p.id === id) || ps[0]; }
-function genBoard(projPath) { const bm = path.join(projPath, 'tools/board.mjs'); if (fs.existsSync(bm)) { try { spawnSync('node', [bm], { cwd: projPath }); } catch {} } }
+function genBoard(projPath) { return new Promise(resolve => { const bm = path.join(projPath, 'tools/board.mjs'); if (!fs.existsSync(bm)) return resolve(); try { execFile('node', [bm], { cwd: projPath }, () => resolve()); } catch { resolve(); } }); }
 function send(res, code, body, type = 'application/json') { res.writeHead(code, { 'Content-Type': type }); res.end(body); }
 function readOr(file, fallback) { try { return fs.readFileSync(file); } catch { return fallback; } }
 function chatFile(p) { return path.join(p.path, 'docs/.state/chat.json'); }
@@ -293,28 +295,36 @@ function sessFile(p) { return path.join(p.path, 'docs/.state/session.json'); }
 function readSess(p) { try { return JSON.parse(fs.readFileSync(sessFile(p), 'utf8')).sessionId || null; } catch { return null; } }
 function writeSess(p, id) { try { fs.mkdirSync(path.dirname(sessFile(p)), { recursive: true }); fs.writeFileSync(sessFile(p), JSON.stringify({ sessionId: id })); } catch {} }
 // 每项目挂一个 claude 会话：有会话则 --resume 续聊（AI 记得上次）；resume 失败则回退新会话
+// 生命周期（#8）：同项目同时只允许一个在跑（防双 --resume 会话分叉/历史互覆）；可被 stopRun 中止
+const runningRuns = new Map(); // projId -> child
 function runClaude(p, msg, cb) {
+  if (runningRuns.has(p.id)) return cb({ reply: '', error: '该项目已有一个 AI 任务在运行，请等它结束或先停止' });
+  let done = false;
+  const finish = (r) => { if (done) return; done = true; runningRuns.delete(p.id); cb(r); };
   const attempt = (resumeId, isRetry) => {
     const args = ['-p', '--output-format', 'json', ...CLAUDE_EXTRA];
     if (resumeId) args.push('--resume', resumeId);
     const child = spawn(CLAUDE_BIN, args, { cwd: p.path, env: childEnv() });
+    runningRuns.set(p.id, child);
     let out = '', err = '';
     child.stdout.on('data', d => (out += d));
     child.stderr.on('data', d => (err += d));
-    child.on('error', e => cb({ reply: '', error: '无法启动 claude：' + e.message }));
-    child.on('close', () => {
+    child.on('error', e => finish({ reply: '', error: '无法启动 claude：' + e.message }));
+    child.on('close', (code, signal) => {
+      if (signal) return finish({ reply: '', error: '已停止（用户中止）' });   // 被 stopRun kill
       let reply = '', newSid = resumeId, isErr = false;
       try { const j = JSON.parse(out); reply = (j.result != null ? String(j.result) : '') || ''; if (j.session_id) newSid = j.session_id; isErr = !!j.is_error; }
       catch { reply = out.trim(); }
       if ((isErr || !reply) && resumeId && !isRetry) return attempt(null, true); // resume 失败 → 开新会话重试一次
       if (!reply) reply = err.trim() || '(无输出)';
       if (newSid) writeSess(p, newSid);
-      cb({ reply, sessionId: newSid });
+      finish({ reply, sessionId: newSid });
     });
     child.stdin.write(msg); child.stdin.end();
   };
   attempt(readSess(p), false);
 }
+function stopRun(projId) { const c = runningRuns.get(projId); if (c) { try { c.kill('SIGTERM'); } catch {} return true; } return false; }
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
@@ -326,14 +336,18 @@ const server = http.createServer((req, res) => {
   // --- API ---
   if (url.pathname === '/api/projects') return send(res, 200, JSON.stringify({ projects: loadProjects() }));
   if (url.pathname === '/api/board') {
-    const p = projById(pid), f = path.join(p.path, 'docs/board.json');
-    if (!fs.existsSync(f)) genBoard(p.path);
-    let b; try { b = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return send(res, 200, '{"specs":[]}'); }
-    for (const sp of (b.specs || [])) {   // 从 spec 文件头补 module（board.json 没存，给前端按模块分组用）
-      if (!sp.module && sp.file) { try { const m = fs.readFileSync(path.join(p.path, sp.file), 'utf8').slice(0, 1200).match(/^module:\s*(.+)$/m); if (m) sp.module = m[1].trim(); } catch {} }
-      if (sp.status === 'accepted' && sp.nodes) { for (const n of (b.nodes || [])) sp.nodes[n] = 'pass'; }   // 已验收/已完成 → 各节点全绿
-    }
-    return send(res, 200, JSON.stringify(b));
+    const p = projById(pid); if (!p) return send(res, 200, '{"specs":[]}');
+    const f = path.join(p.path, 'docs/board.json');
+    const finish = () => {
+      let b; try { b = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return send(res, 200, '{"specs":[]}'); }
+      for (const sp of (b.specs || [])) {   // 从 spec 文件头补 module（board.json 没存，给前端按模块分组用）
+        if (!sp.module && sp.file) { try { const m = fs.readFileSync(path.join(p.path, sp.file), 'utf8').slice(0, 1200).match(/^module:\s*(.+)$/m); if (m) sp.module = m[1].trim(); } catch {} }
+        if (sp.status === 'accepted' && sp.nodes) { for (const n of (b.nodes || [])) sp.nodes[n] = 'pass'; }   // 已验收/已完成 → 各节点全绿
+      }
+      return send(res, 200, JSON.stringify(b));
+    };
+    if (!fs.existsSync(f)) return void genBoard(p.path).then(finish);   // 首次惰性生成，等完成再读
+    return finish();
   }
   if (url.pathname === '/api/tasks') return send(res, 200, readOr(path.join(projById(pid).path, 'docs/tasks.json'), '{"groups":[]}'));
   if (url.pathname === '/api/spec') {
@@ -424,9 +438,8 @@ const server = http.createServer((req, res) => {
       let st = {}; try { st = JSON.parse(fs.readFileSync(sf, 'utf8')); } catch {}
       st.nodes = Object.assign({}, st.nodes, { accept: 'pass' });
       try { fs.mkdirSync(path.dirname(sf), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st, null, 2)); } catch {}
-      // 3) 重算 board
-      genBoard(p.path);
-      return send(res, 200, JSON.stringify({ ok: true }));
+      // 3) 重算 board（异步，等完成再回，前端随后 loadBoard 拿到的是最新）
+      return void genBoard(p.path).then(() => send(res, 200, JSON.stringify({ ok: true })));
     });
     return;
   }
@@ -454,8 +467,7 @@ const server = http.createServer((req, res) => {
         txt = m[1] + fm + m[3] + txt.slice(m[0].length);
         fs.writeFileSync(fp, txt);
       } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: '写 spec 失败：' + e.message })); }
-      genBoard(p.path);
-      return send(res, 200, JSON.stringify({ ok: true }));
+      return void genBoard(p.path).then(() => send(res, 200, JSON.stringify({ ok: true })));
     });
     return;
   }
@@ -475,12 +487,18 @@ const server = http.createServer((req, res) => {
         + `5) 跑 node tools/board.mjs 重算看板。\n`
         + `最后一句话回我：合并了什么、改了哪些受影响 spec、删了哪个文件。`;
       runClaude(p, prompt, (out) => {
-        genBoard(p.path); sseBroadcast({ type: 'refresh' });
-        if (out.error) return send(res, 500, JSON.stringify({ ok: false, error: out.error }));
-        send(res, 200, JSON.stringify({ ok: true, reply: out.reply || '' }));
+        genBoard(p.path).then(() => {
+          sseBroadcast({ type: 'refresh' });
+          if (out.error) return send(res, 500, JSON.stringify({ ok: false, error: out.error }));
+          send(res, 200, JSON.stringify({ ok: true, reply: out.reply || '' }));
+        });
       });
     });
     return;
+  }
+  if (url.pathname === '/api/run-stop' && req.method === 'POST') {   // 中止该项目正在跑的 AI 任务（#8）
+    const p = projById(pid);
+    return send(res, 200, JSON.stringify({ ok: p ? stopRun(p.id) : false }));
   }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
   if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
@@ -557,10 +575,10 @@ const server = http.createServer((req, res) => {
         let j = { projects: [] }; try { j = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')); } catch {}
         if (!j.projects) j.projects = []; j.projects.push({ id, name, path: dest }); fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2));
         const p = { id, name, path: dest };
-        watchProject(p); genBoard(dest);
+        watchProject(p);
         // 已有 spec 数（团队成员 clone 下来再导入时：specs 已在，无需再 /scan）
         let specCount = 0; try { specCount = fs.readdirSync(path.join(dest, 'docs/specs')).filter(n => n.endsWith('.md') && !['_TEMPLATE.md', 'README.md'].includes(n)).length; } catch {}
-        send(res, 200, JSON.stringify({ ok: true, id, existed, mode, prdImported, protoImported, specCount }));
+        genBoard(dest).then(() => send(res, 200, JSON.stringify({ ok: true, id, existed, mode, prdImported, protoImported, specCount })));   // 等 board 生成完再回，前端首屏即拿到 specs
       } catch (e) { send(res, 500, JSON.stringify({ error: e.message })); }
     });
     return;
@@ -682,7 +700,7 @@ function watchProject(p) {
     const w = fs.watch(path.join(p.path, 'docs'), { recursive: true }, (ev, fn) => {
       if (fn && /board\.(json|md)$/.test(fn)) return;
       clearTimeout(_deb);
-      _deb = setTimeout(() => { genBoard(p.path); sseBroadcast({ type: 'refresh' }); }, 300);
+      _deb = setTimeout(() => { genBoard(p.path).then(() => sseBroadcast({ type: 'refresh' })); }, 300);
     });
     watchers.set(p.id, w);
   } catch {}

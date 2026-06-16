@@ -380,7 +380,7 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="confirm-msg">把 <b id="merge-from"></b> 合并到下面选中的 spec —— 由 <b>AI 直接执行</b>：合并 AC/接口/数据契约、改向 depends_on、删除被合并的那条并重算看板。</div>
     <select id="merge-to" class="merge-sel"></select>
     <div id="merge-err" style="color:var(--c-dg);font-size:12px;min-height:15px;margin:7px 20px 0"></div>
-    <div class="confirm-acts"><button class="abtn ghost" onclick="closeMerge()">取消</button><button class="abtn" id="merge-ok" onclick="doMerge()">合并</button></div>
+    <div class="confirm-acts"><button class="abtn ghost" id="merge-cancel" onclick="closeMerge()">取消</button><button class="abtn" id="merge-ok" onclick="doMerge()">合并</button></div>
   </div>
 </div>
 
@@ -538,13 +538,17 @@ function closeMerge(){ document.getElementById('merge-modal').classList.remove('
 async function doMerge(){
   const to=document.getElementById('merge-to').value, err=document.getElementById('merge-err');
   if(!to){ err.textContent='请选择目标 spec'; return; }
-  const ok=document.getElementById('merge-ok'); ok.disabled=true; ok.textContent='AI 合并中…'; err.textContent='';
+  const ok=document.getElementById('merge-ok'), cancel=document.getElementById('merge-cancel');
+  ok.disabled=true; ok.textContent='AI 合并中…'; err.textContent='';
+  cancel.textContent='停止'; cancel.setAttribute('onclick','stopMerge()');   // 跑起来后取消→停止（#8 可中止）
+  const reset=()=>{ ok.disabled=false; ok.textContent='合并'; cancel.textContent='取消'; cancel.setAttribute('onclick','closeMerge()'); };
   try{
     const r=await (await fetch('/api/spec-merge?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:mergeFrom,to})})).json();
-    if(!r.ok){ err.textContent='合并失败：'+(r.error||''); ok.disabled=false; ok.textContent='合并'; return; }
-    closeMerge(); loadBoard(); toast('已合并 '+mergeFrom+' → '+to);
-  }catch(e){ err.textContent='失败：'+e.message; ok.disabled=false; ok.textContent='合并'; }
+    if(!r.ok){ err.textContent='合并'+(/停止/.test(r.error||'')?'已停止':'失败：'+(r.error||'')); reset(); loadBoard(); return; }
+    reset(); closeMerge(); loadBoard(); toast('已合并 '+mergeFrom+' → '+to);
+  }catch(e){ err.textContent='失败：'+e.message; reset(); }
 }
+async function stopMerge(){ try{ await fetch('/api/run-stop?project='+PROJECT,{method:'POST'}); toast('正在停止…'); }catch{} }
 
 async function loadBoard(){
   try{
