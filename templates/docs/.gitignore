@@ -1,0 +1,5 @@
+# steward 自动生成 / 运行态——不提交。docs/specs/* 才是源头（含 status），其余由 `node tools/board.mjs` 派生。
+board.json
+board.md
+tasks.json
+.state/

@@ -1,0 +1,14 @@
+# 系统/编辑器
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.log
+
+# 本机 claude 设置/会话产物（注意：只忽略中枢根目录的 .claude，templates/.claude 是脚手架，要提交）
+/.claude/
+**/settings.local.json
+**/plan.md
+
+# 依赖
+node_modules/
