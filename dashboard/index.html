@@ -17,9 +17,12 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .projsel{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;outline:none}.projsel option{color:#1F2733}
 .projwrap{display:flex;align-items:center;gap:8px;min-width:0}
 .projspread{display:flex;gap:6px;overflow-x:auto;max-width:62vw;padding-bottom:1px}
-.projchip{background:rgba(255,255,255,.10);color:#cfe0f0;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.projchip{background:rgba(255,255,255,.10);color:#cfe0f0;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .projchip:hover{background:rgba(255,255,255,.18)}
 .projchip.on{background:#fff;color:#0F2744;border-color:#fff;font-weight:600}
+.projchip-x{opacity:0;font-size:13px;margin-right:-3px}
+.projchip:hover .projchip-x{opacity:.6}
+.projchip-x:hover{opacity:1!important;color:#ff8f8f}
 .projtgl{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer;flex-shrink:0}.projtgl:hover{background:rgba(255,255,255,.2)}
 .tb .rf{background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px;display:flex;gap:5px;align-items:center}.tb .rf:hover{background:rgba(255,255,255,.18)}
 .wrap{flex:1;display:grid;grid-template-columns:1fr 6px var(--rw,480px);min-height:0}
@@ -246,6 +249,7 @@ body.resizing #term-host iframe{pointer-events:none}
     <select id="proj" class="projsel" onchange="onProj()"></select>
     <div id="proj-spread" class="projspread" style="display:none"></div>
     <button class="projtgl" id="proj-toggle" onclick="toggleProjView()" title="切换：下拉 / 全部铺开"><i class="ti ti-layout-grid"></i></button>
+    <button class="projtgl" id="proj-del" onclick="delCurrentProject()" title="移除当前项目（仅取消纳管，不删磁盘文件）"><i class="ti ti-trash"></i></button>
   </div>
   <button class="rf" onclick="openAddProject()" style="padding:6px 10px"><i class="ti ti-folder-plus"></i> 新增项目</button>
   <div class="sp"></div>
@@ -671,10 +675,23 @@ function applyProjView(){
 function toggleProjView(){ projViewMode = projViewMode==='spread'?'select':'spread'; try{localStorage.setItem('projView',projViewMode);}catch{} renderProjSpread(); applyProjView(); }
 function renderProjSpread(){
   const sp=document.getElementById('proj-spread'); if(!sp)return;
-  sp.innerHTML=PROJECTS.map(p=>`<span class="projchip ${p.id===PROJECT?'on':''}" onclick="selectProject('${p.id}')" title="${p.name}">${p.name}</span>`).join('');
+  sp.innerHTML=PROJECTS.map(p=>`<span class="projchip ${p.id===PROJECT?'on':''}" onclick="selectProject('${p.id}')" title="${p.name}">${p.name}<i class="ti ti-x projchip-x" onclick="event.stopPropagation();removeProject('${p.id}')" title="移除「${p.name}」"></i></span>`).join('');
 }
 function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal(); }
 function onProj(){ selectProject(document.getElementById('proj').value); }
+function delCurrentProject(){ if(!PROJECT){ toast('当前没有项目'); return; } removeProject(PROJECT); }
+function removeProject(id){
+  const p=PROJECTS.find(x=>x.id===id); if(!p) return;
+  uiConfirm('将从控制台移除「'+p.name+'」，并关闭它的所有终端窗口。仅取消纳管，不会删除磁盘上的代码与文档（注册表在 ~/.steward，重新「新增项目」可再纳管）。', async()=>{
+    try{
+      const r=await (await fetch('/api/project-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})).json();
+      if(r.error){ toast('移除失败：'+r.error); return; }
+      await loadProjects();
+      refreshAll(); if(PROJECT) loadTerminal();
+      toast('已移除「'+p.name+'」（磁盘文件保留）');
+    }catch(e){ toast('移除失败：'+e.message); }
+  }, {title:'移除项目', okText:'移除', danger:true});
+}
 
 // —— 新增/导入项目 ——
 let pSession='';

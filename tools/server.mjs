@@ -501,6 +501,23 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/project-remove' && req.method === 'POST') {   // 移除项目 = 取消纳管 + 关该项目终端；不删磁盘文件
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let id = ''; try { id = (JSON.parse(buf).id || '').trim(); } catch {}
+      if (!id) return send(res, 400, JSON.stringify({ error: '缺少 id' }));
+      let j = { projects: [] }; try { j = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')); } catch {}
+      if (!j.projects) j.projects = [];
+      const before = j.projects.length;
+      j.projects = j.projects.filter(p => p.id !== id);
+      if (j.projects.length === before) return send(res, 400, JSON.stringify({ error: '项目不存在' }));
+      try { fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ error: e.message })); }
+      for (const w of [...openWindows.values()]) if (w.projectId === id) closeWindow(w.key);   // 杀该项目的 ttyd + tmux
+      unwatchProject(id);
+      sseBroadcast({ type: 'refresh' });
+      send(res, 200, JSON.stringify({ ok: true, id }));
+    });
+    return;
+  }
   if (url.pathname === '/api/chat-clear' && req.method === 'POST') { const p = projById(pid); try { fs.writeFileSync(chatFile(p), JSON.stringify({ messages: [] })); writeSess(p, null); } catch {} return send(res, 200, JSON.stringify({ ok: true })); }
   if (url.pathname === '/api/chat-delete' && req.method === 'POST') {
     const p = projById(pid); let buf = '';
@@ -593,15 +610,18 @@ const server = http.createServer((req, res) => {
 
 // 监听项目 docs/ 变更 → 重算该项目 board + SSE 推送（忽略 board.* 防回环）
 let _deb = null;
+const watchers = new Map(); // projectId -> FSWatcher（移除项目时关掉）
 function watchProject(p) {
   try {
-    fs.watch(path.join(p.path, 'docs'), { recursive: true }, (ev, fn) => {
+    const w = fs.watch(path.join(p.path, 'docs'), { recursive: true }, (ev, fn) => {
       if (fn && /board\.(json|md)$/.test(fn)) return;
       clearTimeout(_deb);
       _deb = setTimeout(() => { genBoard(p.path); sseBroadcast({ type: 'refresh' }); }, 300);
     });
+    watchers.set(p.id, w);
   } catch {}
 }
+function unwatchProject(id) { const w = watchers.get(id); if (w) { try { w.close(); } catch {} watchers.delete(id); } }
 for (const p of loadProjects()) watchProject(p);
 
 server.listen(PORT, '127.0.0.1', () => {
