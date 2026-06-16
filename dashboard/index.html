@@ -225,6 +225,10 @@ body.resizing #term-host iframe{pointer-events:none}
 .confirm-acts{display:flex;justify-content:flex-end;gap:10px;padding:18px 20px}
 .pf{margin-bottom:13px}.pf label{display:block;font-size:12.5px;color:var(--c-t2);margin-bottom:5px;font-weight:500}
 .pf input{width:100%;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;font-family:inherit}.pf input:focus{border-color:var(--c-pri)}
+.segctl{display:flex;gap:8px}
+.seg{flex:1;border:1px solid var(--c-bds);background:#fff;color:var(--c-t2);border-radius:8px;padding:11px 8px;font-size:13px;cursor:pointer;text-align:center;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px}
+.seg:hover{border-color:var(--c-pri)}
+.seg.on{border-color:var(--c-pri);background:var(--c-pri-l);color:var(--c-pri);font-weight:600}
 .psl{font-size:12px;color:var(--c-t2);font-weight:600;margin:6px 0 6px}
 .sess{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--c-bd);border-radius:8px;margin-bottom:7px;cursor:pointer}
 .sess:hover{border-color:var(--c-pri-b)}.sess.on{border-color:var(--c-pri);background:var(--c-pri-l)}
@@ -289,14 +293,35 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="amodal" style="height:auto;max-height:88vh">
     <div class="amh"><i class="ti ti-folder-plus" style="margin-right:8px;color:var(--c-pri)"></i>新增 / 导入项目<span class="amx" onclick="closeAddProject()">&times;</span></div>
     <div style="padding:18px;overflow:auto;flex:1;min-height:0">
+      <div class="pf"><label>项目类型</label>
+        <div class="segctl">
+          <button type="button" id="m-existing" class="seg on" onclick="setAddMode('existing')"><i class="ti ti-folder-code"></i> 老项目 · 已有代码</button>
+          <button type="button" id="m-green" class="seg" onclick="setAddMode('greenfield')"><i class="ti ti-sparkles"></i> 新项目 · 绿地(PRD+原型)</button>
+        </div>
+      </div>
       <div class="pf"><label>项目 ID<span style="color:var(--c-dg)">*</span></label><input id="p-id" placeholder="英文短名，如 shop（仅字母数字-_）"></div>
       <div class="pf"><label>项目名称<span style="color:var(--c-dg)">*</span></label><input id="p-name" placeholder="如：商城系统"></div>
       <div class="pf"><label>项目路径(绝对)<span style="color:var(--c-dg)">*</span></label>
-        <div style="display:flex;gap:6px"><input id="p-path" placeholder="/path/to/your/project（新建或已有均可）" onblur="detectSessions()" style="flex:1"><button type="button" class="abtn ghost" style="white-space:nowrap" onclick="toggleFsBrowse()"><i class="ti ti-folder-search"></i> 浏览</button></div>
+        <div style="display:flex;gap:6px"><input id="p-path" placeholder="/path/to/your/project" onblur="detectSessions()" style="flex:1"><button type="button" class="abtn ghost" style="white-space:nowrap" onclick="openFs('p-path','fsb',false)"><i class="ti ti-folder-search"></i> 浏览</button></div>
         <div id="fsb" class="fsb" style="display:none"></div>
       </div>
-      <div class="pf" style="font-size:11px;color:var(--c-t3)">「浏览」选已有文件夹（导入老项目，只补团队文件不动代码）；或手输一个不存在的路径=新建。失焦后自动检测该路径下的 claude 对话。</div>
-      <div id="p-sess" style="margin-top:6px"></div>
+      <!-- 老项目专属 -->
+      <div id="grp-existing">
+        <div class="pf" style="font-size:11px;color:var(--c-t3)">「浏览」选已有代码文件夹（只补团队文件、不动你的代码）。失焦后自动检测该路径下的 claude 对话。建好后可一键 <code>/scan</code> 逆向生成 spec 基线。</div>
+        <div id="p-sess" style="margin-top:6px"></div>
+      </div>
+      <!-- 绿地专属 -->
+      <div id="grp-green" style="display:none">
+        <div class="pf"><label>PRD 文档（可选）</label>
+          <div style="display:flex;gap:6px"><input id="p-prd" placeholder="选 PRD 文件（.md/.txt/.docx/.pdf…）" style="flex:1"><button type="button" class="abtn ghost" style="white-space:nowrap" onclick="openFs('p-prd','fsb-prd',true)"><i class="ti ti-file-search"></i> 浏览</button></div>
+          <div id="fsb-prd" class="fsb" style="display:none"></div>
+        </div>
+        <div class="pf"><label>原型图目录（可选）</label>
+          <div style="display:flex;gap:6px"><input id="p-proto" placeholder="选放原型图/HTML 的文件夹" style="flex:1"><button type="button" class="abtn ghost" style="white-space:nowrap" onclick="openFs('p-proto','fsb-proto',false)"><i class="ti ti-folder-search"></i> 浏览</button></div>
+          <div id="fsb-proto" class="fsb" style="display:none"></div>
+        </div>
+        <div class="pf" style="font-size:11px;color:var(--c-t3)">路径填一个新目录即可。建好后自动把 PRD 拷进 <code>docs/</code>、原型拷进 <code>docs/prototype/</code>，并提示跑 <code>/init</code> 定栈搭骨架 → 再 <code>/spec</code> 拆 spec。</div>
+      </div>
     </div>
     <div class="amf"><span id="p-err" style="margin-right:auto;color:var(--c-dg);font-size:12px;align-self:center"></span><button class="abtn ghost" onclick="closeAddProject()">取消</button><button class="abtn" id="p-submit" onclick="submitAddProject()">添加</button></div>
   </div>
@@ -651,25 +676,45 @@ function onProj(){ selectProject(document.getElementById('proj').value); }
 
 // —— 新增/导入项目 ——
 let pSession='';
-function openAddProject(){ document.getElementById('p-id').value=''; document.getElementById('p-name').value=''; document.getElementById('p-path').value=''; document.getElementById('p-sess').innerHTML=''; document.getElementById('p-err').textContent=''; pSession=''; const fb=document.getElementById('fsb'); if(fb){fb.style.display='none';fb.innerHTML='';} document.getElementById('pmask').classList.add('on'); }
+let addMode='existing';
+function setAddMode(m){
+  addMode=m;
+  document.getElementById('m-existing').classList.toggle('on',m==='existing');
+  document.getElementById('m-green').classList.toggle('on',m==='greenfield');
+  document.getElementById('grp-existing').style.display = m==='existing'?'':'none';
+  document.getElementById('grp-green').style.display = m==='greenfield'?'':'none';
+  document.getElementById('p-path').placeholder = m==='greenfield' ? '/path/to/new-project（新建一个空目录）' : '/path/to/your/project（指向已有代码库）';
+  ['fsb','fsb-prd','fsb-proto'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='none';});
+}
+function openAddProject(){ ['p-id','p-name','p-path','p-prd','p-proto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); document.getElementById('p-sess').innerHTML=''; document.getElementById('p-err').textContent=''; pSession=''; ['fsb','fsb-prd','fsb-proto'].forEach(id=>{const b=document.getElementById(id);if(b){b.style.display='none';b.innerHTML='';}}); setAddMode('existing'); document.getElementById('pmask').classList.add('on'); }
 function closeAddProject(){ document.getElementById('pmask').classList.remove('on'); }
-// —— 选文件夹：服务端目录浏览器 ——
-let fsCur='', fsParent=null, fsDirs=[];
-function toggleFsBrowse(){ const b=document.getElementById('fsb'); if(b.style.display==='none'){ fsBrowse(document.getElementById('p-path').value.trim()||''); b.style.display='block'; } else b.style.display='none'; }
+// —— 服务端目录浏览器（可复用：选文件夹 / 选文件）——
+let fsCur='', fsParent=null, fsDirs=[], fsFiles=[], fsTarget='p-path', fsBox='fsb', fsPickFile=false;
+function openFs(targetId, boxId, pickFile){
+  fsTarget=targetId; fsBox=boxId; fsPickFile=!!pickFile;
+  const b=document.getElementById(boxId);
+  if(b.style.display==='none'||!b.style.display){ fsBrowse(document.getElementById(targetId).value.trim()||''); } else b.style.display='none';
+}
 async function fsBrowse(p){
-  const b=document.getElementById('fsb'); b.innerHTML='<div class="sst" style="padding:8px">加载中…</div>'; b.style.display='block';
+  const b=document.getElementById(fsBox); b.innerHTML='<div class="sst" style="padding:8px">加载中…</div>'; b.style.display='block';
   try{
-    const r=await (await fetch('/api/fs-list?path='+encodeURIComponent(p||''))).json();
-    fsCur=r.path; fsParent=r.parent; fsDirs=(r.dirs||[]).map(d=>(r.path.endsWith('/')?r.path:r.path+'/')+d);
+    const r=await (await fetch('/api/fs-list?path='+encodeURIComponent(p||'')+(fsPickFile?'&files=1':''))).json();
+    fsCur=r.path; fsParent=r.parent; const base=r.path.endsWith('/')?r.path:r.path+'/';
+    fsDirs=(r.dirs||[]).map(d=>base+d); fsFiles=(r.files||[]).map(f=>base+f);
     const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     let h='<div class="fsbar">'+(r.parent?'<button type="button" class="fsup" onclick="fsBrowse(fsParent)"><i class="ti ti-arrow-up"></i> 上级</button>':'')+'<span class="fscur" title="'+esc(r.path)+'">'+esc(r.path)+'</span></div>';
-    h+='<div class="fslist">'+((r.dirs||[]).length? r.dirs.map((d,i)=>'<div class="fsrow" onclick="fsInto('+i+')"><i class="ti ti-folder"></i> '+esc(d)+'</div>').join('') : '<div class="sst" style="padding:10px">（无子文件夹）</div>')+'</div>';
-    h+='<div class="fspick"><button type="button" class="abtn" onclick="fsPick()"><i class="ti ti-check"></i> 选用此目录</button><span class="sst">就用当前路径作为项目目录</span></div>';
+    let rows=(r.dirs||[]).map((d,i)=>'<div class="fsrow" onclick="fsInto('+i+')"><i class="ti ti-folder"></i> '+esc(d)+'</div>').join('');
+    if(fsPickFile) rows+=(r.files||[]).map((f,i)=>'<div class="fsrow" onclick="fsPickFileAt('+i+')"><i class="ti ti-file"></i> '+esc(f)+'</div>').join('');
+    h+='<div class="fslist">'+(rows||'<div class="sst" style="padding:10px">（空）</div>')+'</div>';
+    h+= fsPickFile
+      ? '<div class="fspick"><span class="sst">点上面的文件选用；文件夹可点进去</span></div>'
+      : '<div class="fspick"><button type="button" class="abtn" onclick="fsPickDir()"><i class="ti ti-check"></i> 选用此目录</button><span class="sst">用当前路径</span></div>';
     b.innerHTML=h;
   }catch(e){ b.innerHTML='<div class="sst" style="padding:8px">读取失败：'+e.message+'</div>'; }
 }
 function fsInto(i){ fsBrowse(fsDirs[i]); }
-function fsPick(){ document.getElementById('p-path').value=fsCur; document.getElementById('fsb').style.display='none'; detectSessions(); }
+function fsPickFileAt(i){ document.getElementById(fsTarget).value=fsFiles[i]; document.getElementById(fsBox).style.display='none'; }
+function fsPickDir(){ document.getElementById(fsTarget).value=fsCur; document.getElementById(fsBox).style.display='none'; if(fsTarget==='p-path') detectSessions(); }
 async function detectSessions(){
   const abs=document.getElementById('p-path').value.trim(); const box=document.getElementById('p-sess');
   if(!abs){ box.innerHTML=''; return; }
@@ -684,22 +729,30 @@ async function detectSessions(){
   }catch(e){ box.innerHTML='<div class="sst">检测失败：'+e.message+'</div>'; }
 }
 function pickSess(el,id){ document.querySelectorAll('#p-sess .sess').forEach(x=>x.classList.remove('on')); el.classList.add('on'); el.querySelector('input').checked=true; pSession=id; }
+function fireCmd(text){   // 等新项目窗口建好拿到 key，再把命令打进终端
+  let tries=0; const fire=()=>{ const w=windows[activeIdx]||windows[0];
+    if(w){ fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text})}).catch(()=>{}); }
+    else if(tries++<25) setTimeout(fire,400);
+  }; setTimeout(fire,600);
+}
 async function submitAddProject(){
   const id=document.getElementById('p-id').value.trim(), name=document.getElementById('p-name').value.trim(), p=document.getElementById('p-path').value.trim();
   const err=document.getElementById('p-err'); err.textContent='';
   if(!id||!name||!p){ err.textContent='ID/名称/路径必填'; return; }
+  const body={id,name,path:p,sessionId:pSession,mode:addMode};
+  if(addMode==='greenfield'){ body.prdPath=document.getElementById('p-prd').value.trim(); body.protoDir=document.getElementById('p-proto').value.trim(); }
   const btn=document.getElementById('p-submit'); btn.disabled=true; btn.textContent='添加中…';
   try{
-    const r=await (await fetch('/api/project-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name,path:p,sessionId:pSession})})).json();
+    const r=await (await fetch('/api/project-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
     if(r.error){ err.textContent=r.error; btn.disabled=false; btn.textContent='添加'; return; }
     await loadProjects(); document.getElementById('proj').value=id; PROJECT=id;
     closeAddProject(); refreshAll(); btn.disabled=false; btn.textContent='添加';
     setMode('term');   // 切到终端、为新项目开窗口
-    if(r.existed && confirm('已导入「'+name+'」。现在扫描源码、生成 spec 基线吗？\n（会先列出模块让你选范围 · 便宜模型 · 不会一上来全扫）')){
-      let tries=0; const fire=()=>{ const w=windows[activeIdx]||windows[0];   // 等窗口建好拿到 key 再发 /scan
-        if(w){ fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'/scan'})}).catch(()=>{}); }
-        else if(tries++<25) setTimeout(fire,400);
-      }; setTimeout(fire,600);
+    if(addMode==='greenfield'){
+      const imp=[(r.prdImported?'PRD':''),(r.protoImported?('原型 '+r.protoImported+' 个文件'):'')].filter(Boolean).join('、');
+      if(confirm('已新建「'+name+'」'+(imp?('（已导入：'+imp+'）'):'')+'。\n现在跑 /init 定技术栈 + 搭最小工程骨架吗？')) fireCmd('/init');
+    } else if(r.existed && confirm('已导入「'+name+'」。现在扫描源码、生成 spec 基线吗？\n（会先列出模块让你选范围 · 便宜模型 · 不会一上来全扫）')){
+      fireCmd('/scan');
     }
   }catch(e){ err.textContent='失败：'+e.message; btn.disabled=false; btn.textContent='添加'; }
 }

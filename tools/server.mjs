@@ -245,6 +245,8 @@ function listClaudeSessions(abs) {
 // ---- 新项目脚手架（复制团队文件，已存在不覆盖）----
 function copyIfAbsent(src, dst) { try { if (fs.existsSync(src) && !fs.existsSync(dst)) { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.copyFileSync(src, dst); } } catch {} }
 function copyMdDir(srcDir, dstDir) { try { fs.mkdirSync(dstDir, { recursive: true }); for (const f of fs.readdirSync(srcDir)) if (f.endsWith('.md')) copyIfAbsent(path.join(srcDir, f), path.join(dstDir, f)); } catch {} }
+// 递归拷贝整个目录（绿地导入原型用）；返回拷贝的文件数
+function copyDirAll(srcDir, dstDir) { let n = 0; try { fs.mkdirSync(dstDir, { recursive: true }); for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) { if (e.name.startsWith('.')) continue; const s = path.join(srcDir, e.name), d = path.join(dstDir, e.name); if (e.isDirectory()) n += copyDirAll(s, d); else { try { fs.copyFileSync(s, d); n++; } catch {} } } } catch {} return n; }
 // 模板占位符替换（{{PROJECT_NAME}} / {{PROJECT_ID}} 等）；文件不存在或无占位符则 no-op
 function fillPlaceholders(file, map) { try { if (!fs.existsSync(file)) return; let s = fs.readFileSync(file, 'utf8'); for (const [k, v] of Object.entries(map)) s = s.split(k).join(v); fs.writeFileSync(file, s); } catch {} }
 function scaffoldProject(dest, name, id) {
@@ -335,14 +337,19 @@ const server = http.createServer((req, res) => {
     let dir = url.searchParams.get('path') || os.homedir();
     try { dir = path.resolve(dir); } catch {}
     if (!fs.existsSync(dir)) dir = os.homedir();
-    let dirs = [];
+    const wantFiles = url.searchParams.get('files') === '1';
+    let dirs = [], files = [];
     try {
-      dirs = fs.readdirSync(dir, { withFileTypes: true })
+      const ents = fs.readdirSync(dir, { withFileTypes: true });
+      dirs = ents
         .filter(d => { try { return d.isDirectory() || (d.isSymbolicLink() && fs.statSync(path.join(dir, d.name)).isDirectory()); } catch { return false; } })
         .map(d => d.name).filter(n => !n.startsWith('.')).sort((a, b) => a.localeCompare(b));
-    } catch { return send(res, 200, JSON.stringify({ path: dir, parent: path.dirname(dir), dirs: [], error: '无法读取该目录' })); }
+      if (wantFiles) files = ents
+        .filter(d => { try { return d.isFile() || (d.isSymbolicLink() && fs.statSync(path.join(dir, d.name)).isFile()); } catch { return false; } })
+        .map(d => d.name).filter(n => !n.startsWith('.')).sort((a, b) => a.localeCompare(b));
+    } catch { return send(res, 200, JSON.stringify({ path: dir, parent: path.dirname(dir), dirs: [], files: [], error: '无法读取该目录' })); }
     const parent = path.dirname(dir);
-    return send(res, 200, JSON.stringify({ path: dir, parent: parent === dir ? null : parent, dirs }));
+    return send(res, 200, JSON.stringify({ path: dir, parent: parent === dir ? null : parent, dirs, files }));
   }
   if (url.pathname === '/api/agents') {
     const proj = projById(pid);
@@ -466,6 +473,7 @@ const server = http.createServer((req, res) => {
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
       let b = {}; try { b = JSON.parse(buf); } catch {}
       const id = (b.id || '').trim().replace(/[^a-zA-Z0-9_-]/g, ''), name = (b.name || '').trim(), dest = (b.path || '').trim(), sessionId = (b.sessionId || '').trim();
+      const mode = (b.mode || 'existing').trim(), prdPath = (b.prdPath || '').trim(), protoDir = (b.protoDir || '').trim();
       if (!id || !name || !dest) return send(res, 400, JSON.stringify({ error: 'id / 名称 / 路径 均必填（id 仅限字母数字-_）' }));
       if (!path.isAbsolute(dest)) return send(res, 400, JSON.stringify({ error: '路径需为绝对路径' }));
       if (loadProjects().find(p => p.id === id)) return send(res, 400, JSON.stringify({ error: '项目 id 已存在' }));
@@ -474,12 +482,19 @@ const server = http.createServer((req, res) => {
         let existed = false; try { existed = fs.existsSync(dest) && fs.readdirSync(dest).some(n => !['docs', 'tools', '.claude', 'CLAUDE.md', '.git'].includes(n)); } catch {}
         fs.mkdirSync(dest, { recursive: true });
         scaffoldProject(dest, name, id);
+        // 绿地：把选好的 PRD/原型拷进项目（PRD→docs/PRD<ext>，原型→docs/prototype/）
+        let prdImported = false, protoImported = 0;
+        if (mode === 'greenfield') {
+          fs.mkdirSync(path.join(dest, 'docs/prototype'), { recursive: true });
+          if (prdPath && path.isAbsolute(prdPath)) { try { if (fs.statSync(prdPath).isFile()) { fs.copyFileSync(prdPath, path.join(dest, 'docs/PRD' + (path.extname(prdPath) || '.md'))); prdImported = true; } } catch {} }
+          if (protoDir && path.isAbsolute(protoDir)) { try { if (fs.statSync(protoDir).isDirectory()) protoImported = copyDirAll(protoDir, path.join(dest, 'docs/prototype')); } catch {} }
+        }
         if (sessionId) fs.writeFileSync(path.join(dest, 'docs/.state/session.json'), JSON.stringify({ sessionId }));
         let j = { projects: [] }; try { j = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')); } catch {}
         if (!j.projects) j.projects = []; j.projects.push({ id, name, path: dest }); fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2));
         const p = { id, name, path: dest };
         watchProject(p); genBoard(dest);
-        send(res, 200, JSON.stringify({ ok: true, id, existed }));
+        send(res, 200, JSON.stringify({ ok: true, id, existed, mode, prdImported, protoImported }));
       } catch (e) { send(res, 500, JSON.stringify({ error: e.message })); }
     });
     return;
