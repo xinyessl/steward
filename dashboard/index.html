@@ -230,6 +230,7 @@ body.resizing #term-host iframe{pointer-events:none}
 .amx{margin-left:auto;cursor:pointer;color:var(--c-t3);font-size:22px;line-height:1}
 .amsub{padding:8px 18px;font-size:12px;color:var(--c-t3);background:var(--c-bg);border-bottom:1px solid var(--c-bd)}
 .amtext{flex:1;border:none;outline:none;padding:16px 18px;font-family:var(--fe),Menlo,monospace;font-size:13px;line-height:1.7;resize:none;color:var(--c-t)}
+.cmd-edit{float:right;font-size:11px;color:var(--c-t3);border:1px solid var(--c-bd);border-radius:5px;padding:1px 7px;margin-left:8px}.cmd-edit:hover{border-color:var(--c-pri);color:var(--c-pri)}
 .amf{padding:12px 18px;border-top:1px solid var(--c-bd);display:flex;justify-content:flex-end;gap:10px}
 .abtn{background:var(--c-pri);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;transition:filter .15s,box-shadow .15s}.abtn:disabled{opacity:.6}
 .abtn:hover{filter:brightness(1.06)}.abtn:active{filter:brightness(.94)}
@@ -706,7 +707,9 @@ async function toggleCmds(){
     const r=await (await fetch('/api/commands?project='+PROJECT)).json();
     const cs=r.commands||[];
     const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-    pop.innerHTML='<div class="hpt">本项目可用命令（点一下填入输入框，再补参数）</div>'+(cs.length?cs.map(c=>`<div class="hrow" onclick="useCmd('${c.name}')"><div class="hp1"><b style="color:var(--c-pri);font-family:var(--fe)">/${c.name}</b></div><div class="hp2" style="white-space:normal">${esc(c.desc)}</div></div>`).join(''):'<div class="sst" style="padding:10px">该项目暂无命令</div>');
+    pop.innerHTML='<div class="hpt">本项目命令 / 提示词（点命令名填入输入框；点「编辑」改提示词，对本项目即时生效）</div>'
+      +'<div class="hrow" onclick="editPrompt(\'manual\',\'\',\'编排手册 CLAUDE.md\')"><div class="hp1"><b style="color:var(--c-pu)">✎ 编排手册 CLAUDE.md</b></div><div class="hp2" style="white-space:normal">项目方法论主文档（角色 / 护栏 / 纪律）——点开可看/改</div></div>'
+      +(cs.length?cs.map(c=>`<div class="hrow" onclick="useCmd('${c.name}')"><div class="hp1"><b style="color:var(--c-pri);font-family:var(--fe)">/${c.name}</b><span class="cmd-edit" onclick="event.stopPropagation();editPrompt('command','${c.name}','/${c.name}')">编辑</span></div><div class="hp2" style="white-space:normal">${esc(c.desc)}</div></div>`).join(''):'<div class="sst" style="padding:10px">该项目暂无命令</div>');
   }catch(e){ pop.innerHTML='<div class="hpt">命令</div><div class="sst" style="padding:10px">读取失败</div>'; }
 }
 function useCmd(name){
@@ -881,8 +884,9 @@ async function submitAddProject(){
 
 // —— agent 提示词查看/编辑 ——
 let curAgent='';
+let promptTarget=null;   // 非空=正在编辑内置提示词(命令/CLAUDE.md)，复用 agent 弹窗
 async function editAgent(id){
-  curAgent=id;
+  curAgent=id; promptTarget=null;
   try{
     const r=await (await fetch('/api/agent-file?project='+PROJECT+'&id='+id)).json();
     document.getElementById('amtitle').textContent='编辑 agent · '+id;
@@ -891,11 +895,29 @@ async function editAgent(id){
     document.getElementById('amask').classList.add('on');
   }catch(e){ alert('读取失败：'+e.message); }
 }
+async function editPrompt(kind,name,label){   // 查看/编辑命令提示词或 CLAUDE.md（复用 agent 弹窗）
+  promptTarget={kind,name};
+  document.getElementById('cmd-pop')&&document.getElementById('cmd-pop').classList.remove('on');
+  try{
+    const q='kind='+kind+(name?'&name='+encodeURIComponent(name):'');
+    const r=await (await fetch('/api/prompt-file?project='+PROJECT+'&'+q)).json();
+    if(r.error){ alert('读取失败：'+r.error); return; }
+    document.getElementById('amtitle').textContent='编辑 · '+label;
+    document.getElementById('amsub').textContent=(r.rel||'')+'　·　保存后对当前项目即时生效';
+    document.getElementById('amtext').value=r.content||'';
+    document.getElementById('amask').classList.add('on');
+  }catch(e){ alert('读取失败：'+e.message); }
+}
 function closeAgent(){ document.getElementById('amask').classList.remove('on'); }
 async function saveAgent(){
   const btn=document.getElementById('amsave'); btn.disabled=true; btn.textContent='保存中…';
   try{
-    await fetch('/api/agent-file?project='+PROJECT+'&id='+curAgent,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('amtext').value})});
+    if(promptTarget){
+      const q='kind='+promptTarget.kind+(promptTarget.name?'&name='+encodeURIComponent(promptTarget.name):'');
+      await fetch('/api/prompt-file?project='+PROJECT+'&'+q,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('amtext').value})});
+    }else{
+      await fetch('/api/agent-file?project='+PROJECT+'&id='+curAgent,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('amtext').value})});
+    }
     btn.textContent='已保存 ✓'; setTimeout(()=>{ btn.disabled=false; btn.textContent='保存'; closeAgent(); },700);
   }catch(e){ btn.disabled=false; btn.textContent='保存'; alert('保存失败：'+e.message); }
 }

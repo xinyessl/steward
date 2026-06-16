@@ -632,6 +632,26 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/prompt-file') {   // 查看/编辑内置提示词：命令 .md / agent .md / CLAUDE.md（白名单 + 防穿越）
+    const p = projById(pid); if (!p) return send(res, 400, JSON.stringify({ error: '尚未纳管任何项目' }));
+    const kind = (url.searchParams.get('kind') || '').trim();
+    const name = (url.searchParams.get('name') || '').replace(/[^a-z0-9_-]/gi, '');
+    let rel = '';
+    if (kind === 'command' && name) rel = '.claude/commands/' + name + '.md';
+    else if (kind === 'agent' && name) rel = '.claude/agents/' + name + '.md';
+    else if (kind === 'manual') rel = 'CLAUDE.md';
+    else return send(res, 400, JSON.stringify({ error: '参数错误' }));
+    const f = path.join(p.path, rel);
+    if (req.method === 'GET') return send(res, 200, JSON.stringify({ rel, content: fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '' }));
+    if (req.method === 'POST') {
+      let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+        try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, (JSON.parse(buf).content) ?? ''); send(res, 200, JSON.stringify({ ok: true })); }
+        catch (e) { send(res, 500, JSON.stringify({ error: e.message })); }
+      });
+      return;
+    }
+    return;
+  }
   if (url.pathname === '/api/agent-file') {
     const p = projById(pid);
     const id = (url.searchParams.get('id') || '').replace(/[^a-z0-9_-]/gi, '');   // 防路径穿越
