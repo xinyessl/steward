@@ -451,6 +451,29 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/spec-merge' && req.method === 'POST') {   // 合并 spec：选好目标后，后端直接调 LLM 执行（不经 CLI 窗口）
+    const p = projById(pid);
+    if (!p) return send(res, 400, JSON.stringify({ ok: false, error: '尚未纳管任何项目' }));
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const from = (b.from || '').trim(), to = (b.to || '').trim();
+      if (!/^[A-Za-z0-9_-]+$/.test(from) || !/^[A-Za-z0-9_-]+$/.test(to)) return send(res, 400, JSON.stringify({ ok: false, error: '非法 spec' }));
+      if (from === to) return send(res, 400, JSON.stringify({ ok: false, error: '不能合并到自己' }));
+      const prompt = `把 spec ${from} 合并进 spec ${to}，**直接执行改文件，不要只给建议**：\n`
+        + `1) 读 docs/specs 下这两条；按 CLAUDE.md §4.6 算影响面（谁 depends_on ${from}、共享表/接口/同模块）。\n`
+        + `2) 把 ${from} 的范围/AC/接口契约/数据契约/测试要点合并进 ${to}（去重、保留更严的约束），并更新 ${to} 标题/描述使其涵盖两者。\n`
+        + `3) 所有 depends_on 里指向 ${from} 的改为指向 ${to}。\n`
+        + `4) 删除 ${from} 的 spec 文件与 docs/.state/${from}.json。\n`
+        + `5) 跑 node tools/board.mjs 重算看板。\n`
+        + `最后一句话回我：合并了什么、改了哪些受影响 spec、删了哪个文件。`;
+      runClaude(p, prompt, (out) => {
+        genBoard(p.path); sseBroadcast({ type: 'refresh' });
+        if (out.error) return send(res, 500, JSON.stringify({ ok: false, error: out.error }));
+        send(res, 200, JSON.stringify({ ok: true, reply: out.reply || '' }));
+      });
+    });
+    return;
+  }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
   if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
   if (url.pathname === '/api/window-seen' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let k = ''; try { k = String(JSON.parse(buf).key || ''); } catch {} const w = openWindows.get(k); if (w) w.done = false; send(res, 200, JSON.stringify({ ok: true })); }); return; }

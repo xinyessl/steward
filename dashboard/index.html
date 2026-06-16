@@ -240,6 +240,7 @@ body.resizing #term-host iframe{pointer-events:none}
 .confirm-t{font-weight:600;font-size:15px;padding:18px 20px 0;color:var(--c-t)}
 .confirm-msg{padding:9px 20px 0;font-size:13.5px;line-height:1.7;color:var(--c-t2);white-space:pre-line}
 .confirm-acts{display:flex;justify-content:flex-end;gap:10px;padding:18px 20px}
+.merge-sel{display:block;width:calc(100% - 40px);margin:12px 20px 0;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;background:#fff;color:var(--c-t);cursor:pointer}.merge-sel:focus{border-color:var(--c-pri)}
 .pf{margin-bottom:13px}.pf label{display:block;font-size:12.5px;color:var(--c-t2);margin-bottom:5px;font-weight:500}
 .pf input{width:100%;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;font-family:inherit}.pf input:focus{border-color:var(--c-pri)}
 .segctl{display:flex;gap:8px}
@@ -373,6 +374,15 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="confirm-acts"><button class="abtn ghost" onclick="closeConfirm()">取消</button><button class="abtn" id="confirm-ok">确定</button></div>
   </div>
 </div>
+<div class="modal" id="merge-modal" onclick="if(event.target===this)closeMerge()">
+  <div class="confirm-bd">
+    <div class="confirm-t">合并 spec</div>
+    <div class="confirm-msg">把 <b id="merge-from"></b> 合并到下面选中的 spec —— 由 <b>AI 直接执行</b>：合并 AC/接口/数据契约、改向 depends_on、删除被合并的那条并重算看板。</div>
+    <select id="merge-to" class="merge-sel"></select>
+    <div id="merge-err" style="color:var(--c-dg);font-size:12px;min-height:15px;margin:7px 20px 0"></div>
+    <div class="confirm-acts"><button class="abtn ghost" onclick="closeMerge()">取消</button><button class="abtn" id="merge-ok" onclick="doMerge()">合并</button></div>
+  </div>
+</div>
 
 <script>
 const NODE_CN={dev:'开发',test:'测试',accept:'验收'};
@@ -476,7 +486,7 @@ function uiConfirm(msg,onOk,opts){
 }
 function closeConfirm(){ document.getElementById('confirm-modal').classList.remove('on'); _confirmCb=null; }
 document.getElementById('confirm-ok').addEventListener('click',()=>{ const cb=_confirmCb; closeConfirm(); if(cb)cb(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSpec(); closeConfirm(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSpec(); closeConfirm(); closeMerge(); } });
 function acceptSpec(spec){
   uiConfirm('将把该 spec 置为 accepted 并标记验收通过。',async()=>{
     try{
@@ -506,8 +516,27 @@ function delSpec(spec,title){
     prefillTerm('请删除 spec '+spec+'（'+title+'）：先按 CLAUDE.md §4.6 算影响面（谁 depends_on 它、共享表/接口/同模块），列出受影响项给我确认后，再删 spec 文件与相关代码/测试，并更新受影响 spec。');
   },{title:'删除 spec '+spec,okText:'去终端确认',danger:true});
 }
-function mergeSpec(spec){
-  prefillTerm('请把 spec '+spec+' 合并到 <填目标 spec id>：按 §4.6 算两者影响面，合并 AC/接口/数据契约，改向 depends_on，删掉被合并的那条，给我确认 diff 再落地。');
+let mergeFrom='';
+function mergeSpec(spec){   // 选目标 → 后端直接调 LLM 合并（不走 CLI 窗口）
+  mergeFrom=spec;
+  const opts=(boardData&&boardData.specs||[]).filter(s=>s.id!==spec).map(s=>`<option value="${s.id}">${s.id} — ${(s.title||'').replace(/"/g,'')}</option>`).join('');
+  if(!opts){ toast('没有可合并的目标 spec'); return; }
+  document.getElementById('merge-from').textContent=spec;
+  document.getElementById('merge-to').innerHTML=opts;
+  document.getElementById('merge-err').textContent='';
+  const ok=document.getElementById('merge-ok'); ok.disabled=false; ok.textContent='合并';
+  document.getElementById('merge-modal').classList.add('on');
+}
+function closeMerge(){ document.getElementById('merge-modal').classList.remove('on'); }
+async function doMerge(){
+  const to=document.getElementById('merge-to').value, err=document.getElementById('merge-err');
+  if(!to){ err.textContent='请选择目标 spec'; return; }
+  const ok=document.getElementById('merge-ok'); ok.disabled=true; ok.textContent='AI 合并中…'; err.textContent='';
+  try{
+    const r=await (await fetch('/api/spec-merge?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:mergeFrom,to})})).json();
+    if(!r.ok){ err.textContent='合并失败：'+(r.error||''); ok.disabled=false; ok.textContent='合并'; return; }
+    closeMerge(); loadBoard(); toast('已合并 '+mergeFrom+' → '+to);
+  }catch(e){ err.textContent='失败：'+e.message; ok.disabled=false; ok.textContent='合并'; }
 }
 
 async function loadBoard(){
