@@ -66,7 +66,6 @@ steward/                     # 工具本体（可分享，不含项目数据）
 ├─ tools/server.mjs          #   控制台服务（零依赖）
 ├─ tools/start.sh            #   启动
 ├─ tools/new-project.sh      #   命令行纳管项目
-├─ tools/export.sh           #   导出干净分享包
 ├─ dashboard/index.html      #   控制台 UI
 └─ templates/                #   新项目脚手架（整套复制进新项目）
    ├─ CLAUDE.md              #     被管项目的编排手册（方法论主体）
@@ -96,12 +95,6 @@ steward/                     # 工具本体（可分享，不含项目数据）
 详见 `templates/CLAUDE.md`（每个被管项目自带的编排手册）。
 
 ---
-
-## 导出分享包
-
-```bash
-bash tools/export.sh         # → ~/Desktop/steward-export/steward-export.tgz（干净、不含任何项目数据）
-```
 
 ## License
 
