@@ -13,7 +13,7 @@ Zero third-party dependencies (one Node script runs the server), a single-page c
 - **One place for many projects**: register any project (frontend / backend / any stack), then switch, track progress, and dispatch work from a single console.
 - **Auto-generate specs for existing projects**: `/scan` reverse-reads your current code and builds a `docs/specs/*.md` baseline **by feature module** (cheap model, incremental, flags `NEEDS-HUMAN`), so legacy projects become "documented and traceable" too.
 - **Spec-driven development**: new requirements/changes are first broken down + run through **impact analysis** (touch one thing → auto-find which specs are affected) → edit spec → implement → accept on the board.
-- **Solve it once, never again**: every non-obvious problem you fix together with the AI (a style glitch, a filter that doesn't apply, a wrong field mapping…) is distilled into a lesson in `docs/lessons.md`. The dev agent **reads it before every task** to avoid repeating past mistakes and **writes a new lesson after** solving one — so the project literally gets harder to break over time.
+- **Solve it once, never again**: every non-obvious problem you fix together with the AI (a style glitch, a filter that doesn't apply, a wrong field mapping…) is distilled into a lesson in a **shared, cross-project knowledge base** (`~/.steward/lessons.md`). The dev agent of **every** managed project **reads it before each task** to avoid repeating past mistakes and **writes a new lesson after** solving one — a pitfall hit in one project is avoided in all the others.
 - **Embedded terminal**: open multiple claude windows per project (persisted via ttyd + tmux, survives refresh/reconnect), with a live tri-color status: working / needs-confirmation / idle.
 - **Tool/data isolation**: the tool itself holds no project data; the project registry lives in `~/.steward/`, each project's artifacts stay in its own directory — updating the tool never touches your data.
 
@@ -105,7 +105,7 @@ steward/                     # the tool itself (shareable, contains no project d
 ```
 
 ### What to commit (project side)
-- **Commit**: `docs/specs/*` (the source, incl. status), `docs/lessons.md` (the team's accumulated pitfalls), `docs/changes`, `docs/reviews`, `CLAUDE.md`, `.claude/agents`+`commands`, `tools/board.mjs`.
+- **Commit**: `docs/specs/*` (the source, incl. status), `docs/changes`, `docs/reviews`, `CLAUDE.md`, `.claude/agents`+`commands`, `tools/board.mjs`. (The lessons base lives in `~/.steward/lessons.md` — global/per-user, not committed per project.)
 - **Don't commit** (generated / runtime / local): `docs/board.json`, `docs/board.md`, `docs/tasks.json`, `docs/.state/`, `.claude/plan.md`, `.claude/settings.local.json`.
   > Newly imported projects ship with `docs/.gitignore` / `.claude/.gitignore` that enforce this boundary automatically.
 

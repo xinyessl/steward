@@ -17,7 +17,6 @@ TPL="$ROOT/templates"
 cp -n "$TPL/CLAUDE.md"                   "$DEST/CLAUDE.md"               2>/dev/null || true
 cp -n "$TPL/.claude/agents/"*.md         "$DEST/.claude/agents/"         2>/dev/null || true
 cp -n "$TPL/.claude/commands/"*.md       "$DEST/.claude/commands/"       2>/dev/null || true
-cp -n "$TPL/docs/lessons.md"             "$DEST/docs/lessons.md"         2>/dev/null || true
 cp -n "$TPL/docs/specs/_TEMPLATE.md"     "$DEST/docs/specs/"             2>/dev/null || true
 cp -n "$TPL/docs/specs/README.md"        "$DEST/docs/specs/"            2>/dev/null || true
 cp -n "$TPL/tools/board.mjs"             "$DEST/tools/board.mjs"         2>/dev/null || true

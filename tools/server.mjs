@@ -25,6 +25,7 @@ const SELF_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PO
 // 用户数据目录（与工具本体隔离，像 VSCode）：项目注册表存这里，工具目录保持干净/可分享。可用 STEWARD_DATA 覆盖。
 const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
+const LESSONS_FILE = path.join(DATA_DIR, 'lessons.md');   // Steward 全局经验库（跨所有受管项目共享，与工具隔离）
 try {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(PROJECTS_FILE)) {   // 首次运行：从旧位置 tools/projects.json 迁移注册表，否则建空表
@@ -32,6 +33,7 @@ try {
     try { const legacy = path.join(ROOT, 'tools/projects.json'); if (fs.existsSync(legacy)) { const j = JSON.parse(fs.readFileSync(legacy, 'utf8')); if (j && j.projects && j.projects.length) init = JSON.stringify({ projects: j.projects }, null, 2); } } catch {}
     fs.writeFileSync(PROJECTS_FILE, init);
   }
+  if (!fs.existsSync(LESSONS_FILE)) { try { fs.copyFileSync(path.join(ROOT, 'templates/lessons.md'), LESSONS_FILE); } catch { fs.writeFileSync(LESSONS_FILE, '# Steward 全局经验库 / 防回归（跨项目共享）\n\n'); } }
 } catch {}
 function findClaude() {
   if (process.env.CLAUDE_BIN && fs.existsSync(process.env.CLAUDE_BIN)) return process.env.CLAUDE_BIN;
@@ -53,6 +55,7 @@ const CLAUDE_EXTRA = (process.env.CLAUDE_EXTRA || '').split(' ').filter(Boolean)
 function childEnv() {
   const e = { ...process.env };
   for (const k of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH']) delete e[k];
+  e.STEWARD_LESSONS = LESSONS_FILE;   // 让子 claude 知道 Steward 全局经验库在哪（兼容 STEWARD_DATA 覆盖）
   return e;
 }
 // 内嵌终端：每项目一个 ttyd（按 projects.json 顺序分配端口）
@@ -267,7 +270,6 @@ function scaffoldProject(dest, name, id) {
   fillPlaceholders(path.join(dest, 'CLAUDE.md'), { '{{PROJECT_NAME}}': name || '', '{{PROJECT_ID}}': id || '' });
   copyMdDir(path.join(T, '.claude/agents'), path.join(dest, '.claude/agents'));
   copyMdDir(path.join(T, '.claude/commands'), path.join(dest, '.claude/commands'));
-  copyIfAbsent(path.join(T, 'docs/lessons.md'), path.join(dest, 'docs/lessons.md'));   // 经验库/防回归（源头·提交 git）
   copyIfAbsent(path.join(T, 'docs/specs/_TEMPLATE.md'), path.join(dest, 'docs/specs/_TEMPLATE.md'));
   copyIfAbsent(path.join(T, 'docs/specs/README.md'), path.join(dest, 'docs/specs/README.md'));
   copyIfAbsent(path.join(T, 'tools/board.mjs'), path.join(dest, 'tools/board.mjs'));
@@ -510,6 +512,11 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/run-stop' && req.method === 'POST') {   // 中止该项目正在跑的 AI 任务（#8）
     const p = projById(pid);
     return send(res, 200, JSON.stringify({ ok: p ? stopRun(p.id) : false }));
+  }
+  if (url.pathname === '/api/lessons') {   // Steward 全局经验库（~/.steward/lessons.md）：查看/编辑
+    if (req.method === 'GET') return send(res, 200, JSON.stringify({ path: LESSONS_FILE, content: fs.existsSync(LESSONS_FILE) ? fs.readFileSync(LESSONS_FILE, 'utf8') : '' }));
+    if (req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { try { fs.writeFileSync(LESSONS_FILE, (JSON.parse(buf).content) ?? ''); send(res, 200, JSON.stringify({ ok: true })); } catch (e) { send(res, 500, JSON.stringify({ error: e.message })); } }); return; }
+    return;
   }
   if (url.pathname === '/api/health') {   // 上手就绪检查（#5）：工具就绪即时返回；?login=1 才探测 claude 登录
     const health = { claude: { found: CLAUDE_BIN !== 'claude', bin: CLAUDE_BIN }, ttyd: !!TTYD_BIN, tmux: !!TMUX_BIN, node: process.version, projects: loadProjects().length };

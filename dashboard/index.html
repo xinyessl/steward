@@ -279,6 +279,7 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="sp"></div>
   <div class="gen" id="gen">—</div>
   <div class="bell" onclick="toggleInbox()" title="需要你介入的事项"><i class="ti ti-bell"></i><span class="badge" id="inbox-badge" style="display:none">0</span></div>
+  <button class="rf" onclick="editLessons()" title="Steward 全局经验库（跨项目共享·开发 agent 开工前都会读）"><i class="ti ti-book"></i> 经验库</button>
   <button class="rf" onclick="refreshAll()"><i class="ti ti-refresh"></i> 刷新</button>
 </div>
 <div id="readybar" class="readybar" style="display:none"></div>
@@ -920,9 +921,19 @@ async function submitAddProject(){
 
 // —— agent 提示词查看/编辑 ——
 let curAgent='';
-let promptTarget=null;   // 非空=正在编辑内置提示词(命令/CLAUDE.md)，复用 agent 弹窗
+let promptTarget=null, lessonsMode=false;   // 复用 agent 弹窗：promptTarget=命令/CLAUDE.md，lessonsMode=全局经验库
+async function editLessons(){   // Steward 全局经验库（~/.steward/lessons.md，跨项目共享）
+  lessonsMode=true; promptTarget=null;
+  try{
+    const r=await (await fetch('/api/lessons')).json();
+    document.getElementById('amtitle').textContent='Steward 全局经验库（跨项目共享）';
+    document.getElementById('amsub').textContent=(r.path||'~/.steward/lessons.md')+'　·　所有受管项目的开发 agent 开工前都会读它避坑、收尾后回写';
+    document.getElementById('amtext').value=r.content||'';
+    document.getElementById('amask').classList.add('on');
+  }catch(e){ alert('读取失败：'+e.message); }
+}
 async function editAgent(id){
-  curAgent=id; promptTarget=null;
+  curAgent=id; promptTarget=null; lessonsMode=false;
   try{
     const r=await (await fetch('/api/agent-file?project='+PROJECT+'&id='+id)).json();
     document.getElementById('amtitle').textContent='编辑 agent · '+id;
@@ -932,7 +943,7 @@ async function editAgent(id){
   }catch(e){ alert('读取失败：'+e.message); }
 }
 async function editPrompt(kind,name,label){   // 查看/编辑命令提示词或 CLAUDE.md（复用 agent 弹窗）
-  promptTarget={kind,name};
+  promptTarget={kind,name}; lessonsMode=false;
   document.getElementById('cmd-pop')&&document.getElementById('cmd-pop').classList.remove('on');
   try{
     const q='kind='+kind+(name?'&name='+encodeURIComponent(name):'');
@@ -948,7 +959,9 @@ function closeAgent(){ document.getElementById('amask').classList.remove('on'); 
 async function saveAgent(){
   const btn=document.getElementById('amsave'); btn.disabled=true; btn.textContent='保存中…';
   try{
-    if(promptTarget){
+    if(lessonsMode){
+      await fetch('/api/lessons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('amtext').value})});
+    }else if(promptTarget){
       const q='kind='+promptTarget.kind+(promptTarget.name?'&name='+encodeURIComponent(promptTarget.name):'');
       await fetch('/api/prompt-file?project='+PROJECT+'&'+q,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('amtext').value})});
     }else{
