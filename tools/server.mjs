@@ -18,6 +18,10 @@ import net from 'node:net';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'); // 控制台宿主目录（工具本体）
 const PORT = process.env.PORT || 5178;
+// 同源/同机访问白名单（#6）：本地单用户控制台只接受来自控制台自身的请求，
+// 借此挡住「任意网站跨源调本地 API」与 DNS-rebinding（Host 被改成攻击者域名）。
+const SELF_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
+const SELF_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`, `http://[::1]:${PORT}`]);
 // 用户数据目录（与工具本体隔离，像 VSCode）：项目注册表存这里，工具目录保持干净/可分享。可用 STEWARD_DATA 覆盖。
 const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
@@ -280,7 +284,7 @@ function loadProjects() {
 }
 function projById(id) { const ps = loadProjects(); return ps.find(p => p.id === id) || ps[0]; }
 function genBoard(projPath) { const bm = path.join(projPath, 'tools/board.mjs'); if (fs.existsSync(bm)) { try { spawnSync('node', [bm], { cwd: projPath }); } catch {} } }
-function send(res, code, body, type = 'application/json') { res.writeHead(code, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*' }); res.end(body); }
+function send(res, code, body, type = 'application/json') { res.writeHead(code, { 'Content-Type': type }); res.end(body); }
 function readOr(file, fallback) { try { return fs.readFileSync(file); } catch { return fallback; } }
 function chatFile(p) { return path.join(p.path, 'docs/.state/chat.json'); }
 function readChat(p) { try { return JSON.parse(fs.readFileSync(chatFile(p), 'utf8')); } catch { return { messages: [] }; } }
@@ -314,6 +318,10 @@ function runClaude(p, msg, cb) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
+  // 跨源/DNS-rebinding 防护（#6）：拒绝非本机 Host、以及任何跨源页面发来的请求。
+  // 同源 GET/HEAD 通常不带 Origin（放行）；同源 POST 带本机 Origin（放行）；跨源 POST 一定带攻击者 Origin（403）。
+  if (!SELF_HOSTS.has(req.headers.host || '')) return send(res, 403, JSON.stringify({ error: 'forbidden host' }));
+  if (req.headers.origin && !SELF_ORIGINS.has(req.headers.origin)) return send(res, 403, JSON.stringify({ error: 'cross-origin forbidden' }));
   const pid = url.searchParams.get('project');
   // --- API ---
   if (url.pathname === '/api/projects') return send(res, 200, JSON.stringify({ projects: loadProjects() }));
@@ -611,7 +619,7 @@ const server = http.createServer((req, res) => {
     }
   }
   if (url.pathname === '/api/events') {
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write('retry: 3000\n\n');
     sseClients.add(res); req.on('close', () => sseClients.delete(res));
     return;
@@ -659,8 +667,10 @@ const server = http.createServer((req, res) => {
   // --- 静态（dashboard 从宿主目录）---
   let rel = url.pathname === '/' ? '/dashboard/index.html' : url.pathname;
   const file = path.join(ROOT, rel);
-  if (file.startsWith(ROOT) && fs.existsSync(file) && fs.statSync(file).isFile())
-    return send(res, 200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream');
+  if (file.startsWith(ROOT) && fs.existsSync(file) && fs.statSync(file).isFile()) {   // no-store：改了 UI 立刻生效，不吃浏览器旧缓存（#9）
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    return res.end(fs.readFileSync(file));
+  }
   send(res, 404, 'Not Found', 'text/plain');
 });
 
