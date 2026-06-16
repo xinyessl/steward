@@ -327,6 +327,15 @@ function runClaude(p, msg, cb) {
   attempt(readSess(p), false);
 }
 function stopRun(projId) { const c = runningRuns.get(projId); if (c) { try { c.kill('SIGTERM'); } catch {} return true; } return false; }
+// 按需探测 claude 登录态（跑一个极小 -p，带超时；不自动调用，避免 token 成本）
+function probeClaudeLogin(cb) {
+  let done = false; const fin = v => { if (done) return; done = true; cb(v); };
+  let child; try { child = spawn(CLAUDE_BIN, ['-p', 'ok', '--output-format', 'json'], { env: childEnv() }); } catch { return fin('error'); }
+  let out = ''; child.stdout.on('data', d => (out += d)); child.on('error', () => fin('error'));
+  const t = setTimeout(() => { try { child.kill(); } catch {} fin('timeout'); }, 15000);
+  child.on('close', () => { clearTimeout(t); try { const j = JSON.parse(out); fin(j.is_error ? 'error' : 'ok'); } catch { fin(out.trim() ? 'ok' : 'error'); } });
+  try { child.stdin.end(); } catch {}
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
@@ -501,6 +510,11 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/run-stop' && req.method === 'POST') {   // 中止该项目正在跑的 AI 任务（#8）
     const p = projById(pid);
     return send(res, 200, JSON.stringify({ ok: p ? stopRun(p.id) : false }));
+  }
+  if (url.pathname === '/api/health') {   // 上手就绪检查（#5）：工具就绪即时返回；?login=1 才探测 claude 登录
+    const health = { claude: { found: CLAUDE_BIN !== 'claude', bin: CLAUDE_BIN }, ttyd: !!TTYD_BIN, tmux: !!TMUX_BIN, node: process.version, projects: loadProjects().length };
+    if (url.searchParams.get('login') === '1') return void probeClaudeLogin(r => send(res, 200, JSON.stringify({ ...health, login: r })));
+    return send(res, 200, JSON.stringify(health));
   }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
   if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }

@@ -255,6 +255,14 @@ body.resizing #term-host iframe{pointer-events:none}
 .sess:hover{border-color:var(--c-pri-b)}.sess.on{border-color:var(--c-pri);background:var(--c-pri-l)}
 .sess input{accent-color:var(--c-pri)}.sess .sx{flex:1;min-width:0}.sess .sp1{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sess .sp2{font-size:11px;color:var(--c-t3);font-family:var(--fe)}
 ::-webkit-scrollbar{width:7px}::-webkit-scrollbar-thumb{background:#D0D7DE;border-radius:4px}
+.readybar{display:flex;align-items:center;gap:8px;padding:5px 16px;background:#fff;border-bottom:1px solid var(--c-bd);font-size:11.5px;flex-wrap:wrap}
+.readybar .rk{color:var(--c-t3)}.readybar .rk2{color:var(--c-t3);margin-left:auto;font-family:var(--fe)}
+.rchip{border:1px solid var(--c-bd);border-radius:999px;padding:1px 9px}
+.rchip.ok{color:var(--c-ok);border-color:#A9DCC0;background:var(--c-ok-l)}
+.rchip.bad{color:var(--c-dg);border-color:#EBB7B0;background:var(--c-dg-l);cursor:pointer}
+.rchip.clk{cursor:pointer}
+.empty-cta{text-align:center;padding:42px 20px;background:#fff;border:1px dashed var(--c-bds);border-radius:12px;margin:12px 0}
+.empty-cta .ec-t{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--c-t)}.empty-cta .ec-d{font-size:13px;color:var(--c-t2);margin-bottom:16px;line-height:1.7}
 </style>
 </head>
 <body>
@@ -273,6 +281,7 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="bell" onclick="toggleInbox()" title="需要你介入的事项"><i class="ti ti-bell"></i><span class="badge" id="inbox-badge" style="display:none">0</span></div>
   <button class="rf" onclick="refreshAll()"><i class="ti ti-refresh"></i> 刷新</button>
 </div>
+<div id="readybar" class="readybar" style="display:none"></div>
 <div class="inbox-pop" id="inbox-pop"></div>
 
 <div class="wrap">
@@ -280,6 +289,7 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="sec"><i class="ti ti-users-group"></i> 开发状态</div>
     <div class="team" id="team"></div>
     <div id="v-board">
+      <div id="empty-cta" class="empty-cta" style="display:none"></div>
       <div class="kpis" id="kpis"></div>
       <div id="blk"></div>
       <div class="sec"><i class="ti ti-layout-dashboard"></i> 全局总览（按优先级里程碑）</div>
@@ -759,8 +769,34 @@ async function loadProjects(){
     const sel=document.getElementById('proj');
     sel.innerHTML=PROJECTS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
     PROJECT=PROJECTS[0]?PROJECTS[0].id:'';
-    sel.value=PROJECT; renderProjSpread(); applyProjView();
+    sel.value=PROJECT; renderProjSpread(); applyProjView(); renderEmptyCta();
   }catch(e){}
+}
+function renderEmptyCta(){   // 0 项目时给引导 CTA（#5）
+  const el=document.getElementById('empty-cta'); if(!el)return;
+  if(!PROJECTS.length){ el.style.display='block'; el.innerHTML='<div class="ec-t">还没有纳管任何项目</div><div class="ec-d">导入你的第一个项目开始：<b>老项目</b>（已有代码）/ <b>绿地</b>（PRD+原型）/ <b>Git 仓库</b>。</div><button class="abtn" onclick="openAddProject()"><i class="ti ti-folder-plus"></i> 新增项目</button>'; }
+  else el.style.display='none';
+}
+async function loadHealth(){   // 上手就绪条（#5）：工具就绪即时显示；claude 登录点 chip 探测
+  const bar=document.getElementById('readybar'); if(!bar)return;
+  try{
+    const h=await (await fetch('/api/health')).json();
+    const chip=(ok,label,hint)=>`<span class="rchip ${ok?'ok':'bad'}" title="${(hint||'').replace(/"/g,'')}">${ok?'✓':'✗'} ${label}</span>`;
+    bar.innerHTML='<span class="rk">就绪：</span>'
+      +`<span class="rchip clk ${h.claude.found?'ok':'bad'}" title="${(h.claude.bin||'').replace(/"/g,'')}" onclick="checkLogin(this)">${h.claude.found?'✓ claude（点测登录）':'✗ claude 未找到'}</span>`
+      +chip(h.ttyd,'ttyd', h.ttyd?'内嵌终端可用':'内嵌终端不可用：brew install ttyd 后重启')
+      +chip(h.tmux,'tmux', h.tmux?'会话持久化可用':'会话持久化不可用：brew install tmux 后重启')
+      +`<span class="rk2">node ${h.node}</span>`;
+    bar.style.display='flex';
+  }catch(e){}
+}
+async function checkLogin(el){
+  const old=el.textContent; el.textContent='⏳ claude 测登录中…';
+  try{
+    const h=await (await fetch('/api/health?login=1')).json();
+    if(h.login==='ok'){ el.className='rchip clk ok'; el.textContent='✓ claude 已登录'; }
+    else { el.className='rchip clk bad'; el.textContent='✗ claude 未登录/超时（开个终端窗口登录一次）'; toast('claude 未登录或响应超时——开个终端窗口按提示登录一次'); }
+  }catch(e){ el.textContent=old; }
 }
 // 项目选择两种形态：下拉(select) / 全部铺开(spread)，点切换按钮切，记到 localStorage
 let projViewMode = (()=>{ try{return localStorage.getItem('projView')||'select';}catch{return 'select';} })();
@@ -1006,6 +1042,7 @@ try{
   };
 }catch(e){}
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
+loadHealth();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
 // 弹窗外部点击即关闭：历史对话 / 通知铃铛
 document.addEventListener('click',e=>{
