@@ -581,9 +581,14 @@ const server = http.createServer((req, res) => {
         let nonEmpty = false; try { nonEmpty = fs.existsSync(dest) && fs.readdirSync(dest).length > 0; } catch {}
         if (nonEmpty) return send(res, 400, JSON.stringify({ error: '克隆目标目录已存在且非空，请换一个空目录' }));
         try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch {}
-        const git = spawn('git', ['clone', gitUrl, dest], { stdio: 'ignore' });   // 不覆盖 env：继承 SSH/凭证；args 数组无 shell 注入
-        git.on('error', e => send(res, 500, JSON.stringify({ error: '无法启动 git：' + e.message })));
-        git.on('close', code => { if (code !== 0) return send(res, 500, JSON.stringify({ error: 'git clone 失败（退出码 ' + code + '）：检查地址 / 网络 / 凭证' })); finalize(); });
+        // GIT_TERMINAL_PROMPT=0：缺凭证时立即失败而不是在后台进程里卡死等输入；抓 stderr 把真实原因回给前端；2 分钟超时兜底
+        let gerr = '', settled = false;
+        const fail = m => { if (settled) return; settled = true; send(res, 500, JSON.stringify({ error: m })); };
+        const git = spawn('git', ['clone', '--progress', gitUrl, dest], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' } });
+        git.stderr.on('data', d => (gerr += d));
+        git.on('error', e => fail('无法启动 git：' + e.message));
+        const gt = setTimeout(() => { try { git.kill(); } catch {} fail('git clone 超时（>2 分钟）：私有仓库需要凭证时请用已配好 SSH key 的 git@ 地址，或检查网络'); }, 120000);
+        git.on('close', code => { clearTimeout(gt); if (settled) return; if (code !== 0) { const tail = gerr.trim().split('\n').filter(Boolean).slice(-3).join(' / '); return fail('git clone 失败：' + (tail || ('退出码 ' + code) + '（多半是凭证/地址/网络）')); } settled = true; finalize(); });
         return;
       }
       finalize();
