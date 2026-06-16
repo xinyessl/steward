@@ -229,6 +229,8 @@ body.resizing #term-host iframe{pointer-events:none}
 .seg{flex:1;border:1px solid var(--c-bds);background:#fff;color:var(--c-t2);border-radius:8px;padding:11px 8px;font-size:13px;cursor:pointer;text-align:center;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px}
 .seg:hover{border-color:var(--c-pri)}
 .seg.on{border-color:var(--c-pri);background:var(--c-pri-l);color:var(--c-pri);font-weight:600}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-t);color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;box-shadow:0 8px 28px rgba(15,39,68,.3);opacity:0;transition:.25s;z-index:300;pointer-events:none;max-width:80vw}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 .psl{font-size:12px;color:var(--c-t2);font-weight:600;margin:6px 0 6px}
 .sess{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--c-bd);border-radius:8px;margin-bottom:7px;cursor:pointer}
 .sess:hover{border-color:var(--c-pri-b)}.sess.on{border-color:var(--c-pri);background:var(--c-pri-l)}
@@ -729,6 +731,8 @@ async function detectSessions(){
   }catch(e){ box.innerHTML='<div class="sst">检测失败：'+e.message+'</div>'; }
 }
 function pickSess(el,id){ document.querySelectorAll('#p-sess .sess').forEach(x=>x.classList.remove('on')); el.classList.add('on'); el.querySelector('input').checked=true; pSession=id; }
+let toastT=null;
+function toast(msg){ let el=document.getElementById('toast'); if(!el){ el=document.createElement('div'); el.id='toast'; el.className='toast'; document.body.appendChild(el); } el.textContent=msg; el.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('on'),3600); }
 function fireCmd(text){   // 等新项目窗口建好拿到 key，再把命令打进终端
   let tries=0; const fire=()=>{ const w=windows[activeIdx]||windows[0];
     if(w){ fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text})}).catch(()=>{}); }
@@ -751,6 +755,8 @@ async function submitAddProject(){
     if(addMode==='greenfield'){
       const imp=[(r.prdImported?'PRD':''),(r.protoImported?('原型 '+r.protoImported+' 个文件'):'')].filter(Boolean).join('、');
       if(confirm('已新建「'+name+'」'+(imp?('（已导入：'+imp+'）'):'')+'。\n现在跑 /init 定技术栈 + 搭最小工程骨架吗？')) fireCmd('/init');
+    } else if(r.specCount>0){   // 已有 spec（团队成员 clone 后导入）→ 不必再 /scan
+      toast('已导入「'+name+'」，加载到 '+r.specCount+' 条 spec，可直接用 ✓');
     } else if(r.existed && confirm('已导入「'+name+'」。现在扫描源码、生成 spec 基线吗？\n（会先列出模块让你选范围 · 便宜模型 · 不会一上来全扫）')){
       fireCmd('/scan');
     }

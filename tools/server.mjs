@@ -494,7 +494,9 @@ const server = http.createServer((req, res) => {
         if (!j.projects) j.projects = []; j.projects.push({ id, name, path: dest }); fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2));
         const p = { id, name, path: dest };
         watchProject(p); genBoard(dest);
-        send(res, 200, JSON.stringify({ ok: true, id, existed, mode, prdImported, protoImported }));
+        // 已有 spec 数（团队成员 clone 下来再导入时：specs 已在，无需再 /scan）
+        let specCount = 0; try { specCount = fs.readdirSync(path.join(dest, 'docs/specs')).filter(n => n.endsWith('.md') && !['_TEMPLATE.md', 'README.md'].includes(n)).length; } catch {}
+        send(res, 200, JSON.stringify({ ok: true, id, existed, mode, prdImported, protoImported, specCount }));
       } catch (e) { send(res, 500, JSON.stringify({ error: e.message })); }
     });
     return;
