@@ -20,6 +20,8 @@ cp -n "$TPL/.claude/commands/"*.md       "$DEST/.claude/commands/"       2>/dev/
 cp -n "$TPL/docs/specs/_TEMPLATE.md"     "$DEST/docs/specs/"             2>/dev/null || true
 cp -n "$TPL/docs/specs/README.md"        "$DEST/docs/specs/"            2>/dev/null || true
 cp -n "$TPL/tools/board.mjs"             "$DEST/tools/board.mjs"         2>/dev/null || true
+cp -n "$TPL/docs/.gitignore"             "$DEST/docs/.gitignore"         2>/dev/null || true
+cp -n "$TPL/.claude/.gitignore"          "$DEST/.claude/.gitignore"      2>/dev/null || true
 
 echo "▶ 填入项目名/id（CLAUDE.md 占位符 {{PROJECT_NAME}}/{{PROJECT_ID}}）"
 NP_NAME="$NAME" NP_ID="$ID" node -e '
@@ -30,7 +32,7 @@ if(fs.existsSync(f)){let s=fs.readFileSync(f,"utf8");s=s.split("{{PROJECT_NAME}}
 echo "▶ 初始化空状态文件"
 [ -f "$DEST/docs/tasks.json" ]          || echo '{"title":"开发清单","groups":[]}'      > "$DEST/docs/tasks.json"
 [ -f "$DEST/docs/board.json" ]          || echo '{"specs":[],"summary":{"total":0,"accepted":0,"inDev":0,"ready":0,"draft":0},"nodes":["product","backend","frontend","test","ci","review","accept"]}' > "$DEST/docs/board.json"
-[ -f "$DEST/docs/.state/agents.json" ]  || cp "$TPL/docs/.state/agents.json" "$DEST/docs/.state/agents.json"
+[ -f "$DEST/docs/.state/agents.json" ]  || echo '{"updatedAt":"","agents":[{"id":"dev","name":"开发","icon":"code","status":"idle","current":"","since":""}]}' > "$DEST/docs/.state/agents.json"
 
 echo "▶ 注册到用户数据目录（~/.steward/projects.json，与工具本体隔离）"
 NP_ID="$ID" NP_NAME="$NAME" NP_DEST="$DEST" node -e '
@@ -47,5 +49,5 @@ echo ""
 echo "✓ 完成。重启服务后控制台下拉即出现 [$NAME]："
 echo "    bash tools/start.sh"
 echo "下一步（在控制台为该项目开个窗口里执行）："
-echo "  • 已有代码库 → /scan  ：扫源码自动建 docs/specs 规约基线（草稿），你评审 draft→ready"
-echo "  • 全新项目   → /spec  ：把需求转成 spec，再 /build 开发"
+echo "  • 已有代码库       → /scan ：扫源码自动建 docs/specs 规约基线（草稿），你评审 draft→ready"
+echo "  • 全新项目(PRD+原型) → /init ：定栈+搭骨架，再 /spec 拆 spec、/build 开发"

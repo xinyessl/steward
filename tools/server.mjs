@@ -100,6 +100,7 @@ function openWindow(proj, sessionId, label) {
   }
   const args = ['-W', '-i', '127.0.0.1', '-p', String(port), ...cmd];
   const proc = spawn(TTYD_BIN, args, { cwd: proj.path, stdio: 'ignore', env: childEnv() });
+  proc.on('error', e => console.error('[ttyd spawn]', e?.message || e));   // spawn 失败不可掀翻进程
   const key = String(port);
   openWindows.set(key, { key, port, projectId: proj.id, sessionId: sessionId || '', label: label || '新对话', proc, tmuxSess });
   saveWindows();
@@ -112,6 +113,9 @@ function closeWindow(key) { const w = openWindows.get(key); if (w) { killTtyd(w)
 // 进程退出：只存档，不杀 ttyd/tmux —— 让会话存活，下次启动 adopt 接回（重启不打断 claude）
 process.on('exit', () => saveWindows());
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
+// 进程级兜底：单个坏请求 / 子进程 spawn 错误只记日志，绝不掀翻整个控制台
+process.on('uncaughtException', e => console.error('[uncaught]', e?.stack || e));
+process.on('unhandledRejection', e => console.error('[unhandled]', e?.stack || e));
 // 启动时接管已存在的 tmux 会话（上次退出/被 kill 遗留的）：tmux/claude 还活着就拉回来管，端口已被 ttyd 占着则直接认领（无缝），否则重起 ttyd 接回（需刷新页面）
 function adoptWindows() {
   if (!TMUX_BIN) return;
@@ -127,7 +131,7 @@ function adoptWindows() {
     let proc = null;
     if (!portBound(port)) {  // ttyd 没了 → 重起一个接回（new-session -A 已存在=attach，claude 不重启）
       const args = ['-W', '-i', '127.0.0.1', '-p', String(port), TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', sess];
-      try { proc = spawn(TTYD_BIN, args, { cwd: (projById(projectId) || {}).path || ROOT, stdio: 'ignore', env: childEnv() }); } catch {}
+      try { proc = spawn(TTYD_BIN, args, { cwd: (projById(projectId) || {}).path || ROOT, stdio: 'ignore', env: childEnv() }); proc.on('error', e => console.error('[ttyd adopt]', e?.message || e)); } catch {}
     } // else：ttyd 还在（被 SIGKILL 残留）→ 直接认领，浏览器 iframe 不断连，无缝
     openWindows.set(String(port), { key: String(port), port, projectId, sessionId: m.sessionId || '', label: m.label || '恢复的对话', proc, tmuxSess: sess });
   }
@@ -441,7 +445,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/open-window' && req.method === 'POST') {
     if (!TTYD_BIN) return send(res, 400, JSON.stringify({ error: '未安装 ttyd' }));
-    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} const proj = projById(b.project); const r = openWindow(proj, (b.sessionId || '').trim(), b.label || '新对话'); waitForPort(r.port, () => send(res, 200, JSON.stringify(r))); });
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} const proj = projById(b.project); if (!proj) return send(res, 400, JSON.stringify({ error: '尚未纳管任何项目，请先「新增项目」' })); const r = openWindow(proj, (b.sessionId || '').trim(), b.label || '新对话'); waitForPort(r.port, () => send(res, 200, JSON.stringify(r))); });
     return;
   }
   if (url.pathname === '/api/close-window' && req.method === 'POST') {

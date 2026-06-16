@@ -219,7 +219,9 @@ body.resizing #term-host iframe{pointer-events:none}
 .amsub{padding:8px 18px;font-size:12px;color:var(--c-t3);background:var(--c-bg);border-bottom:1px solid var(--c-bd)}
 .amtext{flex:1;border:none;outline:none;padding:16px 18px;font-family:var(--fe),Menlo,monospace;font-size:13px;line-height:1.7;resize:none;color:var(--c-t)}
 .amf{padding:12px 18px;border-top:1px solid var(--c-bd);display:flex;justify-content:flex-end;gap:10px}
-.abtn{background:var(--c-pri);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer}.abtn:disabled{opacity:.6}
+.abtn{background:var(--c-pri);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;transition:filter .15s,box-shadow .15s}.abtn:disabled{opacity:.6}
+.abtn:hover{filter:brightness(1.06)}.abtn:active{filter:brightness(.94)}
+.abtn:focus{outline:none}.abtn:focus-visible{box-shadow:0 0 0 3px rgba(15,39,68,.18)}
 .abtn.ghost{background:#fff;color:var(--c-t2);border:1px solid var(--c-bds)}
 .abtn.danger{background:var(--c-dg)}.abtn.ok{background:var(--c-ok)}
 .confirm-bd{background:#fff;border-radius:14px;width:min(420px,92vw);box-shadow:0 20px 60px rgba(15,39,68,.3);overflow:hidden}
@@ -525,6 +527,8 @@ function projPath(id){ const p=PROJECTS.find(x=>x.id===id); return p?p.path:''; 
 async function loadTerminal(){
   const msg=document.getElementById('term-msg'), host=document.getElementById('term-host');
   document.getElementById('hist-pop').classList.remove('on');
+  // 0 项目：不自动开窗（会撞后端崩溃），显示空状态引导
+  if(!PROJECT){ host.querySelectorAll('iframe').forEach(f=>f.remove()); windows=[]; activeIdx=-1; renderTabs(); termBuiltFor=''; msg.style.display='grid'; msg.innerHTML='还没有纳管任何项目。点右上角 <b>「新增项目」</b> 导入你的第一个项目。'; return; }
   // 已为当前项目建好且 iframe 还在 → 直接复用，不重建（保住正在跑的 claude，切对话/终端不再重开）
   if(termBuiltFor===PROJECT && host.querySelector('iframe')) return;
   // 切了项目或首次进入：清旧 DOM 再重建
@@ -548,6 +552,7 @@ function addWindowDom(key,port,label){
 }
 async function newWindow(){
   if(!ttydReady)return;
+  if(!PROJECT){ toast('请先「新增项目」'); return; }
   const r=await (await fetch('/api/open-window',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:PROJECT,label:'新对话'})})).json();
   if(r.error){ alert(r.error); return; }
   addWindowDom(r.key,r.port,'新对话 '+(windows.length+1));
