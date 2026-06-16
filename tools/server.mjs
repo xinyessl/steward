@@ -11,7 +11,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import net from 'node:net';
@@ -145,9 +145,8 @@ function adoptWindows() {
 // —— 窗口忙/闲检测 ——
 // 每 ~2.5s 抓 tmux 屏幕，剔掉会自走的状态灯（ccgotchi 宠物/用量条/模式行）后做差分：
 // 变了 = claude 正跑一个 turn（spinner 的秒数计时每秒在动）；没变 = 空闲等输入。忙→闲那一刻 = 刚完成，置 done。
-// 注意：必须用 spawnSync（同步）。改异步 execFile 会让「spawn 子进程」与「读连接 body」并发，
-// 在 macOS 上偶发 fd 竞态导致该实例 body-POST 瞬间 400（见此前排查）。spawnSync 阻塞事件循环期间无并发连接 I/O，安全。
-function capturePane(sess, full) { try { const a = ['-L', TMUX_SOCK, 'capture-pane', '-t', sess, '-p']; if (full) a.push('-S', '-'); return (spawnSync(TMUX_BIN, a, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }).stdout) || ''; } catch { return ''; } }
+// 异步抓取（#7）：execFile 不阻塞事件循环，多窗口可并发，控制台不再随窗口数变卡。
+function capturePane(sess, full) { return new Promise(resolve => { try { const a = ['-L', TMUX_SOCK, 'capture-pane', '-t', sess, '-p']; if (full) a.push('-S', '-'); execFile(TMUX_BIN, a, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }, (e, out) => resolve(out || '')); } catch { resolve(''); } }); }
 function titleFromPane(out) {  // 取最早一条用户输入（❯ 后有内容）作为会话话题，拼接换行续行抓全
   const lines = out.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -195,28 +194,30 @@ function confirmFromPane(out) {
   const tail = out.split('\n').slice(-22).join('\n');
   return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|↑\/↓ to select|Do you want to (proceed|continue)|是否(继续|确认|要)|确认[?？]|\bProceed\?|press \w+ to (confirm|continue)|❯\s*\d+\.\s|^\s*\d+[.:]\s+(Yes|No|是|否)/m.test(tail);
 }
-function pollWindows() {
-  if (!TMUX_BIN) return;
-  for (const w of openWindows.values()) {
-    if (!w.tmuxSess) continue;
-    const out = capturePane(w.tmuxSess);
-    if (!out) continue;                          // 本轮抓不到，保留旧状态
-    const sig = sigFromPane(out);
-    if (w.lastSig !== undefined) {
-      const busy = sig !== w.lastSig;
-      if (w.busy && !busy) { w.done = true; w.doneAt = Date.now(); }   // 忙→闲：完成
-      w.busy = busy;
-    } else { w.busy = false; }                   // 首轮：未知按闲（done 仅在真·忙→闲时触发，不会误报）
-    w.lastSig = sig;
-    w.activity = activityFromPane(out);
-    w.confirm = !w.busy && confirmFromPane(out);   // 空闲且在等确认/选择 → 红；否则空闲 → 黄
-    if (!w.title) {  // 会话话题（一次性）：resume 的读会话文件 preview，新窗口从全量屏幕抓第一句用户输入
-      if (w.sessionId) { try { w.title = sessionPreview(path.join(os.homedir(), '.claude', 'projects', encodeCwd((projById(w.projectId) || {}).path || ''), w.sessionId + '.jsonl')); } catch {} }
-      if (!w.title) w.title = titleFromPane(capturePane(w.tmuxSess, true));
-    }
+async function pollOne(w) {
+  if (!w.tmuxSess) return;
+  const out = await capturePane(w.tmuxSess);
+  if (!out) return;                            // 本轮抓不到，保留旧状态
+  const sig = sigFromPane(out);
+  if (w.lastSig !== undefined) {
+    const busy = sig !== w.lastSig;
+    if (w.busy && !busy) { w.done = true; w.doneAt = Date.now(); }   // 忙→闲：完成
+    w.busy = busy;
+  } else { w.busy = false; }                   // 首轮：未知按闲（done 仅在真·忙→闲时触发，不会误报）
+  w.lastSig = sig;
+  w.activity = activityFromPane(out);
+  w.confirm = !w.busy && confirmFromPane(out);   // 空闲且在等确认/选择 → 红；否则空闲 → 黄
+  if (!w.title) {  // 会话话题（一次性）：resume 的读会话文件 preview，新窗口从全量屏幕抓第一句用户输入
+    if (w.sessionId) { try { w.title = sessionPreview(path.join(os.homedir(), '.claude', 'projects', encodeCwd((projById(w.projectId) || {}).path || ''), w.sessionId + '.jsonl')); } catch {} }
+    if (!w.title) w.title = titleFromPane(await capturePane(w.tmuxSess, true));
   }
 }
-setInterval(pollWindows, 2500);
+async function pollWindows() {   // 所有窗口并发抓取，整轮不阻塞事件循环（#7）
+  if (!TMUX_BIN) return;
+  await Promise.all([...openWindows.values()].map(w => pollOne(w).catch(() => {})));
+}
+// 自调度而非 setInterval：上一轮没跑完不会重叠堆积
+(function pollLoop() { Promise.resolve(pollWindows()).catch(() => {}).finally(() => setTimeout(pollLoop, 2500)); })();
 
 // ---- claude 会话发现（按项目 cwd 编码）----
 function encodeCwd(abs) { return abs.replace(/[/.]/g, '-'); }
