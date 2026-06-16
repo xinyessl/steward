@@ -708,9 +708,11 @@ function watchProject(p) {
 function unwatchProject(id) { const w = watchers.get(id); if (w) { try { w.close(); } catch {} watchers.delete(id); } }
 for (const p of loadProjects()) watchProject(p);
 
+// 启动期的子进程 spawn（genBoard / adopt 起 ttyd）放在 server.listen 之前：
+// 避免「spawn 子进程」与「监听 socket 接受连接」在同一瞬间抢 fd，导致该实例后续请求体处理异常（间歇 400）。
+for (const p of loadProjects()) genBoard(p.path);
+adoptWindows();   // 接管上次遗留/重启前存活的 tmux 会话
 server.listen(PORT, '127.0.0.1', () => {
-  for (const p of loadProjects()) genBoard(p.path);
-  adoptWindows();   // 接管上次遗留/重启前存活的 tmux 会话
   console.log(`\n  Steward 控制台（多项目）： http://127.0.0.1:${PORT}`);
   console.log(TTYD_BIN ? '  内嵌终端(ttyd) 就绪：每个项目可开多个对话窗口' : '  内嵌终端未启用：未找到 ttyd（brew install ttyd 后重启）');
   console.log('  (Ctrl+C 退出)\n');
