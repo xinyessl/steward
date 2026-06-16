@@ -145,13 +145,18 @@ body.resizing #term-host iframe{pointer-events:none}
 .btn-acc,.btn-rej{font-size:12px;font-weight:600;padding:5px 13px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .btn-acc{border:none;background:var(--c-ok);color:#fff}.btn-acc:hover{background:#256f46}
 .btn-rej{border:1px solid var(--c-bd);background:#fff;color:var(--c-t2)}.btn-rej:hover{border-color:var(--c-dg);color:var(--c-dg)}
-.srow-ops{display:flex;gap:6px;align-items:center;margin-top:8px;opacity:0;transition:opacity .15s}
-.trw:hover .srow-ops,.trw.await .srow-ops{opacity:1}
-.mini-sel{font-size:11px;border:1px solid var(--c-bds);border-radius:6px;padding:2px 5px;background:#fff;color:var(--c-t2);cursor:pointer;outline:none}
+.srow-ops{display:none;flex-wrap:wrap;gap:10px;align-items:center;margin-top:9px;padding-top:9px;border-top:1px dashed var(--c-bd)}
+.trw.editing .srow-ops{display:flex}
+.opl{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--c-t3)}
+.mini-sel{font-size:11.5px;border:1px solid var(--c-bds);border-radius:6px;padding:3px 6px;background:#fff;color:var(--c-t2);cursor:pointer;outline:none}
 .mini-sel:focus{border-color:var(--c-pri)}
-.mini-btn{border:1px solid var(--c-bds);background:#fff;color:var(--c-t3);border-radius:6px;width:26px;height:23px;display:grid;place-items:center;cursor:pointer}
-.mini-btn:hover{border-color:var(--c-pri);color:var(--c-pri)}
-.mini-btn.danger:hover{border-color:var(--c-dg);color:var(--c-dg)}
+.mini-btn2{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;border:1px solid var(--c-bds);background:#fff;color:var(--c-t2);border-radius:6px;padding:3px 10px;cursor:pointer}
+.mini-btn2:hover{border-color:var(--c-pri);color:var(--c-pri)}
+.mini-btn2.danger:hover{border-color:var(--c-dg);color:var(--c-dg)}
+.ophint{font-size:11px;color:var(--c-t3);margin-left:2px}
+.row-edit{margin-left:6px;border:1px solid var(--c-bd);background:#fff;color:var(--c-t3);border-radius:6px;width:26px;height:24px;display:grid;place-items:center;cursor:pointer;flex-shrink:0}
+.row-edit:hover{border-color:var(--c-pri);color:var(--c-pri)}
+.trw.editing .row-edit{border-color:var(--c-pri);color:var(--c-pri);background:var(--c-pri-l)}
 /* AI 团队状态条（4 角色）*/
 .team{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.team .agent{min-width:220px}
 .agent{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:8px 10px;position:relative;min-width:0;cursor:pointer}
@@ -404,12 +409,13 @@ function specRowHtml(sp){
   const prSel=`<option value="" ${cur===''?'selected':''}>优先级</option>`+prios.map(s=>`<option ${cur===s?'selected':''}>${s}</option>`).join('');
   const title=(sp.title||'').replace(/'/g,'’');
   const ops=`<div class="srow-ops" onclick="event.stopPropagation()">`
-    +`<select class="mini-sel" title="状态（直接改）" onchange="patchSpec('${sp.id}','status',this.value,this)">${stSel}</select>`
-    +`<select class="mini-sel" title="优先级（直接改）" onchange="patchSpec('${sp.id}','priority',this.value,this)">${prSel}</select>`
-    +`<button class="mini-btn" title="合并到…（交给 AI 处理影响面）" onclick="mergeSpec('${sp.id}')"><i class="ti ti-arrows-join"></i></button>`
-    +`<button class="mini-btn danger" title="删除（交给 AI 处理依赖/代码/测试）" onclick="delSpec('${sp.id}','${title}')"><i class="ti ti-trash"></i></button>`
+    +`<label class="opl">状态<select class="mini-sel" onchange="patchSpec('${sp.id}','status',this.value,this)">${stSel}</select></label>`
+    +`<label class="opl">优先级<select class="mini-sel" onchange="patchSpec('${sp.id}','priority',this.value,this)">${prSel}</select></label>`
+    +`<button class="mini-btn2" onclick="mergeSpec('${sp.id}')"><i class="ti ti-arrows-join"></i> 合并到…</button>`
+    +`<button class="mini-btn2 danger" onclick="delSpec('${sp.id}','${title}')"><i class="ti ti-trash"></i> 删除</button>`
+    +`<span class="ophint">状态/优先级即时生效；合并·删除会去终端预填指令交 AI 处理（不直接删文件）</span>`
     +`</div>`;
-  return `<div class="trw ${wait?'await':''}" id="spec-row-${sp.id}"><div class="trw-h" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文"><span class="sid">${sp.id}</span><span class="att">${sp.title||''}</span><span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span></div>${ops}${acts}</div>`;
+  return `<div class="trw ${wait?'await':''}" id="spec-row-${sp.id}"><div class="trw-h" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文"><span class="sid">${sp.id}</span><span class="att">${sp.title||''}</span><span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span><button class="row-edit" title="编辑（状态/优先级/合并/删除）" onclick="event.stopPropagation();toggleRowEdit('${sp.id}')"><i class="ti ti-pencil"></i></button></div>${ops}${acts}</div>`;
 }
 let pendingHighlight=null;
 function highlightSpec(id){ const el=document.getElementById('spec-row-'+id); if(!el)return false; el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1900); return true; }
@@ -484,7 +490,8 @@ function rejectSpec(spec){   // 打回 = 切到终端、往当前窗口预填验
   setMode();
   setTimeout(()=>{ const w=windows[activeIdx]||windows[0]; if(w) fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'验收 '+spec+'：',enter:false})}).catch(()=>{}); },700);
 }
-// —— 看板行内操作：纯数据(状态/优先级)直接写；删除/合并(有语义后果)预填编排器 ——
+// —— 看板行内操作：默认收起，点「编辑」展开；纯数据(状态/优先级)直接写；删除/合并(有语义后果)预填编排器 ——
+function toggleRowEdit(id){ const el=document.getElementById('spec-row-'+id); if(el) el.classList.toggle('editing'); }
 async function patchSpec(spec,field,value,el){
   if(value==='')return;
   try{
