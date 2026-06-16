@@ -422,6 +422,35 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/spec-patch' && req.method === 'POST') {   // 直接改 spec frontmatter 的纯数据字段（状态/优先级）；语义后果类操作走预填编排器，不在这里
+    const p = projById(pid);
+    if (!p) return send(res, 400, JSON.stringify({ ok: false, error: '尚未纳管任何项目' }));
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const spec = (b.spec || '').trim(), field = (b.field || '').trim(), value = (b.value || '').trim();
+      if (!/^[A-Za-z0-9_-]+$/.test(spec)) return send(res, 400, JSON.stringify({ ok: false, error: '非法 spec' }));
+      const ALLOW = { status: ['draft', 'ready', 'in-dev', 'testing', 'accepted'], priority: ['P0', 'P1', 'P2', 'P3', 'Must', 'Should', 'Could'] };
+      if (!ALLOW[field]) return send(res, 400, JSON.stringify({ ok: false, error: '该字段不可直接改（语义字段请走编排器）' }));
+      if (!ALLOW[field].includes(value)) return send(res, 400, JSON.stringify({ ok: false, error: '非法值' }));
+      const dir = path.join(p.path, 'docs/specs');
+      let file = ''; try { file = fs.readdirSync(dir).find(f => f.endsWith('.md') && (f === spec + '.md' || f.startsWith(spec + '-') || f.startsWith(spec + ' '))); } catch {}
+      if (!file) return send(res, 404, JSON.stringify({ ok: false, error: '找不到 spec 文件' }));
+      const fp = path.join(dir, file);
+      try {
+        let txt = fs.readFileSync(fp, 'utf8');
+        const m = txt.match(/^(---\n)([\s\S]*?)(\n---)/);
+        if (!m) return send(res, 400, JSON.stringify({ ok: false, error: 'spec 缺少 frontmatter' }));
+        let fm = m[2];
+        const re = new RegExp('^' + field + ':[ \\t]*.*$', 'm');
+        fm = re.test(fm) ? fm.replace(re, field + ': ' + value) : fm + '\n' + field + ': ' + value;
+        txt = m[1] + fm + m[3] + txt.slice(m[0].length);
+        fs.writeFileSync(fp, txt);
+      } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: '写 spec 失败：' + e.message })); }
+      genBoard(p.path);
+      return send(res, 200, JSON.stringify({ ok: true }));
+    });
+    return;
+  }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
   if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
   if (url.pathname === '/api/window-seen' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let k = ''; try { k = String(JSON.parse(buf).key || ''); } catch {} const w = openWindows.get(k); if (w) w.done = false; send(res, 200, JSON.stringify({ ok: true })); }); return; }

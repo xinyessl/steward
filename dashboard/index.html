@@ -145,6 +145,13 @@ body.resizing #term-host iframe{pointer-events:none}
 .btn-acc,.btn-rej{font-size:12px;font-weight:600;padding:5px 13px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .btn-acc{border:none;background:var(--c-ok);color:#fff}.btn-acc:hover{background:#256f46}
 .btn-rej{border:1px solid var(--c-bd);background:#fff;color:var(--c-t2)}.btn-rej:hover{border-color:var(--c-dg);color:var(--c-dg)}
+.srow-ops{display:flex;gap:6px;align-items:center;margin-top:8px;opacity:0;transition:opacity .15s}
+.trw:hover .srow-ops,.trw.await .srow-ops{opacity:1}
+.mini-sel{font-size:11px;border:1px solid var(--c-bds);border-radius:6px;padding:2px 5px;background:#fff;color:var(--c-t2);cursor:pointer;outline:none}
+.mini-sel:focus{border-color:var(--c-pri)}
+.mini-btn{border:1px solid var(--c-bds);background:#fff;color:var(--c-t3);border-radius:6px;width:26px;height:23px;display:grid;place-items:center;cursor:pointer}
+.mini-btn:hover{border-color:var(--c-pri);color:var(--c-pri)}
+.mini-btn.danger:hover{border-color:var(--c-dg);color:var(--c-dg)}
 /* AI 团队状态条（4 角色）*/
 .team{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.team .agent{min-width:220px}
 .agent{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:8px 10px;position:relative;min-width:0;cursor:pointer}
@@ -391,7 +398,18 @@ function specRowHtml(sp){
   const pr=(sp.priority||'').toLowerCase(), wait=specCat(sp)==='await', sb=stageBadge(sp);
   const dots=nodes.map(n=>{const st=(sp.nodes||{})[n]||'todo';return `<span class="mdot ${st}" title="${NODE_CN[n]||n}：${ST_CN[st]||st}">${ICON[st]||''}</span>`;}).join('');
   const acts=wait?`<div class="sact"><button class="btn-acc" onclick="acceptSpec('${sp.id}')"><i class="ti ti-check"></i> 通过验收</button><button class="btn-rej" onclick="rejectSpec('${sp.id}')"><i class="ti ti-arrow-back-up"></i> 打回（提问题）</button></div>`:'';
-  return `<div class="trw ${wait?'await':''}" id="spec-row-${sp.id}"><div class="trw-h" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文"><span class="sid">${sp.id}</span><span class="att">${sp.title||''}</span><span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span></div>${acts}</div>`;
+  const cur=sp.priority||'';
+  const stSel=['draft','ready','in-dev','testing','accepted'].map(s=>`<option ${sp.status===s?'selected':''}>${s}</option>`).join('');
+  let prios=['P0','P1','P2','P3','Must','Should','Could']; if(cur&&!prios.includes(cur)) prios=[cur,...prios];
+  const prSel=`<option value="" ${cur===''?'selected':''}>优先级</option>`+prios.map(s=>`<option ${cur===s?'selected':''}>${s}</option>`).join('');
+  const title=(sp.title||'').replace(/'/g,'’');
+  const ops=`<div class="srow-ops" onclick="event.stopPropagation()">`
+    +`<select class="mini-sel" title="状态（直接改）" onchange="patchSpec('${sp.id}','status',this.value,this)">${stSel}</select>`
+    +`<select class="mini-sel" title="优先级（直接改）" onchange="patchSpec('${sp.id}','priority',this.value,this)">${prSel}</select>`
+    +`<button class="mini-btn" title="合并到…（交给 AI 处理影响面）" onclick="mergeSpec('${sp.id}')"><i class="ti ti-arrows-join"></i></button>`
+    +`<button class="mini-btn danger" title="删除（交给 AI 处理依赖/代码/测试）" onclick="delSpec('${sp.id}','${title}')"><i class="ti ti-trash"></i></button>`
+    +`</div>`;
+  return `<div class="trw ${wait?'await':''}" id="spec-row-${sp.id}"><div class="trw-h" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文"><span class="sid">${sp.id}</span><span class="att">${sp.title||''}</span><span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span></div>${ops}${acts}</div>`;
 }
 let pendingHighlight=null;
 function highlightSpec(id){ const el=document.getElementById('spec-row-'+id); if(!el)return false; el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1900); return true; }
@@ -465,6 +483,24 @@ function acceptSpec(spec){
 function rejectSpec(spec){   // 打回 = 切到终端、往当前窗口预填验收语，写问题后回车即触发 /accept 修复闭环
   setMode();
   setTimeout(()=>{ const w=windows[activeIdx]||windows[0]; if(w) fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'验收 '+spec+'：',enter:false})}).catch(()=>{}); },700);
+}
+// —— 看板行内操作：纯数据(状态/优先级)直接写；删除/合并(有语义后果)预填编排器 ——
+async function patchSpec(spec,field,value,el){
+  if(value==='')return;
+  try{
+    const r=await (await fetch('/api/spec-patch?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spec,field,value})})).json();
+    if(!r.ok){ toast('改'+field+'失败：'+(r.error||'')); return; }
+    toast(spec+' 的'+(field==='status'?'状态':'优先级')+' → '+value); loadBoard();
+  }catch(e){ toast('失败：'+e.message); }
+}
+function prefillTerm(text){ setMode(); setTimeout(()=>{ const w=windows[activeIdx]||windows[0]; if(w) fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text,enter:false})}).catch(()=>{}); },700); }
+function delSpec(spec,title){
+  uiConfirm('删除 spec 牵涉依赖/代码/测试，交给 AI 按 §4.6 处理更稳妥。点确定会切到终端、预填一条删除指令，你确认后回车执行——不会直接删文件。',()=>{
+    prefillTerm('请删除 spec '+spec+'（'+title+'）：先按 CLAUDE.md §4.6 算影响面（谁 depends_on 它、共享表/接口/同模块），列出受影响项给我确认后，再删 spec 文件与相关代码/测试，并更新受影响 spec。');
+  },{title:'删除 spec '+spec,okText:'去终端确认',danger:true});
+}
+function mergeSpec(spec){
+  prefillTerm('请把 spec '+spec+' 合并到 <填目标 spec id>：按 §4.6 算两者影响面，合并 AC/接口/数据契约，改向 depends_on，删掉被合并的那条，给我确认 diff 再落地。');
 }
 
 async function loadBoard(){
