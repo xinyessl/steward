@@ -266,6 +266,7 @@ function scaffoldProject(dest, name, id) {
   fillPlaceholders(path.join(dest, 'CLAUDE.md'), { '{{PROJECT_NAME}}': name || '', '{{PROJECT_ID}}': id || '' });
   copyMdDir(path.join(T, '.claude/agents'), path.join(dest, '.claude/agents'));
   copyMdDir(path.join(T, '.claude/commands'), path.join(dest, '.claude/commands'));
+  copyIfAbsent(path.join(T, 'docs/lessons.md'), path.join(dest, 'docs/lessons.md'));   // 经验库/防回归（源头·提交 git）
   copyIfAbsent(path.join(T, 'docs/specs/_TEMPLATE.md'), path.join(dest, 'docs/specs/_TEMPLATE.md'));
   copyIfAbsent(path.join(T, 'docs/specs/README.md'), path.join(dest, 'docs/specs/README.md'));
   copyIfAbsent(path.join(T, 'tools/board.mjs'), path.join(dest, 'tools/board.mjs'));

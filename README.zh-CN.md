@@ -13,6 +13,7 @@
 - **多项目一处管**：所有项目（前端/后端/任意栈）注册进来，一个控制台切换、看进度、派活。
 - **导入存量项目自动建规约**：`/scan` 逆向扫描现有代码，按**功能模块**生成 `docs/specs/*.md` 基线（便宜模型、增量、标 `NEEDS-HUMAN`），让老项目也"有据可查"。
 - **spec 驱动开发**：新需求/改动先拆条 + **影响面分析**（改一处自动算波及哪些 spec）→ 改 spec → 实现 → 看板验收。
+- **解决过的问题，别再犯第二次**：每个和 AI 一起排掉的非显然坑（样式错位、筛选不生效、字段映射错…）都沉淀成 `docs/lessons.md` 里的一条教训。开发 agent **每次开工前先读它避坑、收尾后回写新教训**——项目会越用越"踩不坏"。这是本系统很关键的一块价值。
 - **内嵌终端**：每个项目可开多个 claude 对话窗口（ttyd + tmux 持久化，刷新/重连不丢），三色状态实时显示在干活/待确认/空闲。
 - **工具与数据隔离**：工具本体不含任何项目数据；项目注册表在 `~/.steward/`，各项目产物在各自目录——更新工具不碰你的数据。
 
@@ -104,7 +105,7 @@ steward/                     # 工具本体（可分享，不含项目数据）
 ```
 
 ### 该提交什么（项目侧）
-- **提交**：`docs/specs/*`（源头，含 status）、`docs/changes`、`docs/reviews`、`CLAUDE.md`、`.claude/agents`+`commands`、`tools/board.mjs`。
+- **提交**：`docs/specs/*`（源头，含 status）、`docs/lessons.md`（团队踩坑记忆）、`docs/changes`、`docs/reviews`、`CLAUDE.md`、`.claude/agents`+`commands`、`tools/board.mjs`。
 - **不提交**（自动生成 / 运行态 / 本地）：`docs/board.json`、`docs/board.md`、`docs/tasks.json`、`docs/.state/`、`.claude/plan.md`、`.claude/settings.local.json`。
   > 新导入的项目会自带 `docs/.gitignore` / `.claude/.gitignore`，自动处理好这条边界。
 
