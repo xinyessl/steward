@@ -582,8 +582,8 @@ const server = http.createServer((req, res) => {
       if (!id || !name || !dest) return send(res, 400, JSON.stringify({ error: 'id / 名称 / 路径 均必填（id 仅限字母数字-_）' }));
       if (!path.isAbsolute(dest)) return send(res, 400, JSON.stringify({ error: '路径需为绝对路径' }));
       if (loadProjects().find(p => p.id === id)) return send(res, 400, JSON.stringify({ error: '项目 id 已存在' }));
-      // Git 导入：先 clone 到 dest（异步，不阻塞事件循环），成功后再走下面的纳管流程
-      if (mode === 'git') {
+      // 老项目可选 Git：填了地址就先 clone 到 dest（异步，不阻塞），成功后再走纳管；不填则走本地已有代码
+      if (gitUrl && mode !== 'greenfield') {
         if (!/^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/.test(gitUrl)) return send(res, 400, JSON.stringify({ error: 'Git 地址格式不对（需 http(s):// / git@ / ssh:// / file://）' }));
         let nonEmpty = false; try { nonEmpty = fs.existsSync(dest) && fs.readdirSync(dest).length > 0; } catch {}
         if (nonEmpty) return send(res, 400, JSON.stringify({ error: '克隆目标目录已存在且非空，请换一个空目录' }));

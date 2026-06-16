@@ -328,10 +328,13 @@ body.resizing #term-host iframe{pointer-events:none}
     <div style="padding:18px;overflow:auto;flex:1;min-height:0">
       <div class="pf"><label>项目类型</label>
         <div class="segctl">
-          <button type="button" id="m-existing" class="seg on" onclick="setAddMode('existing')"><i class="ti ti-folder-code"></i> 老项目 · 已有代码</button>
+          <button type="button" id="m-existing" class="seg on" onclick="setAddMode('existing')"><i class="ti ti-folder-code"></i> 老项目 · 已有代码 / Git</button>
           <button type="button" id="m-green" class="seg" onclick="setAddMode('greenfield')"><i class="ti ti-sparkles"></i> 新项目 · 绿地</button>
-          <button type="button" id="m-git" class="seg" onclick="setAddMode('git')"><i class="ti ti-brand-git"></i> Git 仓库</button>
         </div>
+      </div>
+      <div id="grp-existing-git" class="pf"><label>Git 仓库地址（选填）</label>
+        <input id="p-git" placeholder="留空=用本地已有代码；填 https/git@ 地址=clone 下来" oninput="onGitInput()">
+        <div style="font-size:11px;color:var(--c-t3);margin-top:5px">填了会自动识别项目 ID / 名称（可改），并 clone 到下面的「项目路径」（须空目录）；不填则路径指向本地已有代码。</div>
       </div>
       <div class="pf"><label>项目 ID<span style="color:var(--c-dg)">*</span></label><input id="p-id" placeholder="英文短名，如 shop（仅字母数字-_）"></div>
       <div class="pf"><label>项目名称<span style="color:var(--c-dg)">*</span></label><input id="p-name" placeholder="如：商城系统"></div>
@@ -355,13 +358,6 @@ body.resizing #term-host iframe{pointer-events:none}
           <div id="fsb-proto" class="fsb" style="display:none"></div>
         </div>
         <div class="pf" style="font-size:11px;color:var(--c-t3)">路径填一个新目录即可。建好后自动把 PRD 拷进 <code>docs/</code>、原型拷进 <code>docs/prototype/</code>，并提示跑 <code>/init</code> 定栈搭骨架 → 再 <code>/spec</code> 拆 spec。</div>
-      </div>
-      <!-- Git 仓库专属 -->
-      <div id="grp-git" style="display:none">
-        <div class="pf"><label>Git 仓库地址<span style="color:var(--c-dg)">*</span></label>
-          <input id="p-git" placeholder="https://github.com/you/repo.git 或 git@github.com:you/repo.git">
-        </div>
-        <div class="pf" style="font-size:11px;color:var(--c-t3)">会 <code>git clone</code> 到上面的「项目路径」（须空目录/不存在），用你本机 git 的 SSH/HTTPS 凭证。克隆完按已有代码纳管，可一键 <code>/scan</code>。大仓克隆需等一会。</div>
       </div>
     </div>
     <div class="amf"><span id="p-err" style="margin-right:auto;color:var(--c-dg);font-size:12px;align-self:center"></span><button class="abtn ghost" onclick="closeAddProject()">取消</button><button class="abtn" id="p-submit" onclick="submitAddProject()">添加</button></div>
@@ -836,12 +832,23 @@ function setAddMode(m){
   addMode=m;
   document.getElementById('m-existing').classList.toggle('on',m==='existing');
   document.getElementById('m-green').classList.toggle('on',m==='greenfield');
-  document.getElementById('m-git').classList.toggle('on',m==='git');
+  document.getElementById('grp-existing-git').style.display = m==='existing'?'':'none';
   document.getElementById('grp-existing').style.display = m==='existing'?'':'none';
   document.getElementById('grp-green').style.display = m==='greenfield'?'':'none';
-  document.getElementById('grp-git').style.display = m==='git'?'':'none';
-  document.getElementById('p-path').placeholder = m==='greenfield' ? '/path/to/new-project（新建一个空目录）' : (m==='git' ? '/path/to/clone-target（克隆到这个空目录）' : '/path/to/your/project（指向已有代码库）');
+  if(m==='existing') onGitInput();   // 路径占位按是否填 git 自适应
+  else document.getElementById('p-path').placeholder='/path/to/new-project（新建一个空目录）';
   ['fsb','fsb-prd','fsb-proto'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='none';});
+}
+function deriveRepo(url){ let s=(url||'').trim().replace(/\.git$/,'').replace(/\/+$/,''); s=s.split(/[:/]/).filter(Boolean).pop()||''; return s; }
+function onGitInput(){   // 填 git → 自动识别 id/名称(空才填) + 路径占位改为"克隆到空目录"
+  const url=document.getElementById('p-git').value.trim();
+  if(url){
+    const repo=deriveRepo(url);
+    if(repo){ const idEl=document.getElementById('p-id'), nmEl=document.getElementById('p-name');
+      if(!idEl.value.trim()) idEl.value=repo.replace(/[^a-zA-Z0-9_-]/g,'');
+      if(!nmEl.value.trim()) nmEl.value=repo; }
+    document.getElementById('p-path').placeholder='/path/to/clone-target（clone 到这个空目录）';
+  } else document.getElementById('p-path').placeholder='/path/to/your/project（指向已有代码库）';
 }
 function openAddProject(){ ['p-id','p-name','p-path','p-prd','p-proto','p-git'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); document.getElementById('p-sess').innerHTML=''; document.getElementById('p-err').textContent=''; pSession=''; ['fsb','fsb-prd','fsb-proto'].forEach(id=>{const b=document.getElementById(id);if(b){b.style.display='none';b.innerHTML='';}}); setAddMode('existing'); document.getElementById('pmask').classList.add('on'); }
 function closeAddProject(){ document.getElementById('pmask').classList.remove('on'); }
@@ -900,8 +907,9 @@ async function submitAddProject(){
   if(!id||!name||!p){ err.textContent='ID/名称/路径必填'; return; }
   const body={id,name,path:p,sessionId:pSession,mode:addMode};
   if(addMode==='greenfield'){ body.prdPath=document.getElementById('p-prd').value.trim(); body.protoDir=document.getElementById('p-proto').value.trim(); }
-  if(addMode==='git'){ body.gitUrl=document.getElementById('p-git').value.trim(); if(!body.gitUrl){ err.textContent='Git 地址必填'; return; } }
-  const btn=document.getElementById('p-submit'); btn.disabled=true; btn.textContent=addMode==='git'?'克隆中…':'添加中…';
+  else { const g=document.getElementById('p-git').value.trim(); if(g) body.gitUrl=g; }   // 老项目：Git 选填，填了就 clone
+  const cloning = addMode==='existing' && !!body.gitUrl;
+  const btn=document.getElementById('p-submit'); btn.disabled=true; btn.textContent=cloning?'克隆中…':'添加中…';
   try{
     const r=await (await fetch('/api/project-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
     if(r.error){ err.textContent=r.error; btn.disabled=false; btn.textContent='添加'; return; }
