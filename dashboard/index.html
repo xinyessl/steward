@@ -199,9 +199,6 @@ body.resizing #term-host iframe{pointer-events:none}
 .md-chev{display:inline-block;width:1em;font-size:11px;color:var(--c-t3);transition:transform .15s}
 .md-sec.collapsed .md-chev{transform:rotate(-90deg)}
 .md-sec.collapsed .md-sec-b{display:none}
-.ov-head{cursor:pointer;user-select:none}#ov-chev{transition:transform .15s}
-.ov-head.collapsed #ov-chev{transform:rotate(-90deg)}
-#ov-wrap.collapsed{display:none}
 .fmtab{border-collapse:collapse;margin:0 0 16px;font-size:12.5px;width:100%}
 .fmtab td{border:1px solid var(--c-bd);padding:4px 11px;vertical-align:top}
 .fmtab .fk{background:var(--c-bg);font-weight:600;color:var(--c-t2);white-space:nowrap;width:1%;font-family:var(--fe)}
@@ -292,6 +289,7 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="sp"></div>
   <div class="gen" id="gen">—</div>
   <div class="bell" onclick="toggleInbox()" title="需要你介入的事项"><i class="ti ti-bell"></i><span class="badge" id="inbox-badge" style="display:none">0</span></div>
+  <button class="rf" onclick="openOverview()" title="进度总览（spec 统计 + 优先级里程碑）"><i class="ti ti-chart-bar"></i> 进度</button>
   <button class="rf" onclick="editLessons()" title="Steward 全局经验库（跨项目共享·开发 agent 开工前都会读）"><i class="ti ti-book"></i> 经验库</button>
   <button class="rf" onclick="refreshAll()"><i class="ti ti-refresh"></i> 刷新</button>
 </div>
@@ -304,12 +302,6 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="team" id="team"></div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
-      <div class="sec ov-head" onclick="toggleOverview()" title="折叠/展开概览"><i class="ti ti-chevron-down" id="ov-chev"></i> 概览 · spec 统计 / 优先级进度</div>
-      <div id="ov-wrap">
-        <div class="kpis" id="kpis"></div>
-        <div id="blk"></div>
-        <div class="card" id="overview" style="margin-top:6px"></div>
-      </div>
       <div class="sec"><i class="ti ti-list-check"></i> 任务清单（进度 / 验收 · 待验收可直接通过或打回）</div>
       <div class="fbar" id="spec-filter"></div>
       <div id="specs"></div>
@@ -395,6 +387,18 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="modal-bd">
     <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
     <div class="modal-body md" id="spec-mbody"></div>
+  </div>
+</div>
+<!-- 进度总览弹窗（KPIs + 优先级里程碑） -->
+<div class="modal" id="ov-modal" onclick="if(event.target===this)closeOverview()">
+  <div class="modal-bd">
+    <div class="modal-h"><span class="mt"><i class="ti ti-chart-bar" style="margin-right:6px"></i>进度总览</span><span class="modal-x" onclick="closeOverview()"><i class="ti ti-x"></i></span></div>
+    <div class="modal-body">
+      <div class="kpis" id="kpis"></div>
+      <div id="blk"></div>
+      <div class="sec"><i class="ti ti-layout-dashboard"></i> 全局总览（按优先级里程碑）</div>
+      <div class="card" id="overview" style="margin-top:6px"></div>
+    </div>
   </div>
 </div>
 
@@ -545,7 +549,7 @@ function uiConfirm(msg,onOk,opts){
 }
 function closeConfirm(){ document.getElementById('confirm-modal').classList.remove('on'); _confirmCb=null; }
 document.getElementById('confirm-ok').addEventListener('click',()=>{ const cb=_confirmCb; closeConfirm(); if(cb)cb(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSpec(); closeConfirm(); closeMerge(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSpec(); closeConfirm(); closeMerge(); closeOverview(); } });
 function acceptSpec(spec){
   uiConfirm('将把该 spec 置为 accepted 并标记验收通过。',async()=>{
     try{
@@ -1124,10 +1128,10 @@ try{
     }
   };
 }catch(e){}
-function toggleOverview(){ const w=document.getElementById('ov-wrap'),h=document.querySelector('.ov-head'),c=!w.classList.contains('collapsed'); w.classList.toggle('collapsed',c); h.classList.toggle('collapsed',c); try{localStorage.setItem('ovCollapsed',c?'1':'0');}catch{} }
-function applyOverviewState(){ let c=false; try{c=localStorage.getItem('ovCollapsed')==='1';}catch{} document.getElementById('ov-wrap').classList.toggle('collapsed',c); document.querySelector('.ov-head').classList.toggle('collapsed',c); }
+function openOverview(){ document.getElementById('ov-modal').classList.add('on'); }
+function closeOverview(){ document.getElementById('ov-modal').classList.remove('on'); }
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
-loadHealth(); applyOverviewState();
+loadHealth();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
 // 弹窗外部点击即关闭：历史对话 / 通知铃铛
 document.addEventListener('click',e=>{
