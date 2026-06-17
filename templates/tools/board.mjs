@@ -48,7 +48,7 @@ function build() {
     if (!fm.id) continue;
     if (seen.has(fm.id)) { dups.push(`${fm.id}（docs/specs/${f} 与 ${seen.get(fm.id)} 重复，已忽略后者）`); continue; }
     seen.set(fm.id, f);
-    specs.push({ id: fm.id, title: fm.title || '', priority: (fm.priority || '').split('/')[0].trim(), status: fm.status || 'draft', file: 'docs/specs/' + f, nodes: specNodes(fm.id, fm.status || 'draft') });
+    specs.push({ id: fm.id, title: fm.title || '', module: (fm.module || '').trim(), priority: (fm.priority || '').split('/')[0].trim(), status: fm.status || 'draft', file: 'docs/specs/' + f, nodes: specNodes(fm.id, fm.status || 'draft') });
   }
   specs.sort((a, b) => a.id.localeCompare(b.id));
 
