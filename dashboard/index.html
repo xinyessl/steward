@@ -5,6 +5,7 @@
 <title>Steward 控制台</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <style>
 :root{--c-pri:#1A6DBE;--c-pri-h:#155A9E;--c-pri-l:#E8F1FA;--c-pri-b:#B8D5EE;--c-t:#1F2733;--c-t2:#5A6573;--c-t3:#98A1AD;--c-bg:#F5F7FA;--c-bd:#E3E8EF;--c-bds:#CBD3DD;--c-ok:#2E8B57;--c-ok-l:#E7F2EC;--c-wn:#C8821A;--c-wn-l:#FBF1E0;--c-dg:#C0392B;--c-dg-l:#FBEAE8;--c-pu:#7A5BA6;--fn:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;--fe:"Inter",system-ui,sans-serif}
 *,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%}
@@ -166,6 +167,15 @@ body.resizing #term-host iframe{pointer-events:none}
 .trw.editing .row-edit{border-color:var(--c-pri);color:var(--c-pri);background:var(--c-pri-l)}
 /* AI 团队状态条（4 角色）*/
 .team{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.team .agent{min-width:220px}
+/* #13 待你处理 行动条：置顶 sticky，按事项类型上色，点条目定位 */
+.action-bar{position:sticky;top:0;z-index:6;background:var(--c-wn-l);border:1px solid #EAD4A6;border-radius:11px;padding:9px 11px;margin-bottom:14px;box-shadow:0 2px 8px rgba(31,39,51,.05)}
+.action-bar .ab-h{font-size:12.5px;font-weight:700;color:var(--c-wn);display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.action-bar .ab-h b{font-family:var(--fe)}
+.ab-item{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-left:3px solid var(--c-wn);border-radius:8px;padding:7px 10px;cursor:pointer;margin-top:6px;transition:.12s}
+.ab-item:first-of-type{margin-top:0}
+.ab-item:hover{border-color:var(--c-bds);transform:translateX(2px)}
+.ab-item .ab-l{font-size:12px;font-weight:600;flex-shrink:0}
+.ab-item .ab-t{font-size:12px;color:var(--c-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agent{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:8px 10px;position:relative;min-width:0;cursor:pointer}
 .agent:hover{border-color:var(--c-pri-b)}.agent.running{border-color:var(--c-pri-b);background:var(--c-pri-l)}
 .aic{width:30px;height:30px;border-radius:8px;background:var(--c-bg);color:var(--c-t2);display:grid;place-items:center;font-size:16px;flex-shrink:0}
@@ -300,6 +310,7 @@ body.resizing #term-host iframe{pointer-events:none}
 
 <div class="wrap">
   <div class="left">
+    <div id="action-bar" class="action-bar" style="display:none"></div>
     <div class="sec"><i class="ti ti-users-group"></i> 开发状态</div>
     <div class="team" id="team"></div>
     <div id="v-board">
@@ -425,6 +436,12 @@ body.resizing #term-host iframe{pointer-events:none}
 <script>
 const NODE_CN={dev:'开发',test:'测试',accept:'验收'};
 const ICON={todo:'',doing:'',pass:'✓',fail:'✕',wait:'!'};
+// #21 XSS 防护：spec / board / 项目名 / 会话话题等都是不可信内容，插进 innerHTML 前必须转义。
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// 放进 onclick="f('…')" 的 JS 字符串实参：先做 JS 转义(反斜杠/单引号/换行)，再 HTML 转义——运行时浏览器先解 HTML 实体、JS 再安全解析。
+function jss(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n]+/g,' '));}
+// markdown 渲染统一走这里：marked 解析后用 DOMPurify 消毒，挡住 <script>/onerror 等存储型 XSS。
+function mdHtml(t){const h=window.marked?marked.parse(String(t==null?'':t)):('<pre>'+esc(t)+'</pre>');return window.DOMPurify?DOMPurify.sanitize(h):h;}
 let PROJECT='';
 let PROJECTS=[];
 let boardData=null, specFilter='all';   // 验收筛选：all/await(待验收)/doing(进行中)/done(已验收)
@@ -458,24 +475,24 @@ function specRowHtml(sp){
   const nodes=boardData.nodes||Object.keys(NODE_CN);
   const pr=(sp.priority||'').toLowerCase(), wait=specCat(sp)==='await', sb=stageBadge(sp);
   const dots=nodes.map(n=>{const st=(sp.nodes||{})[n]||'todo';return `<span class="mdot ${st}" title="${NODE_CN[n]||n}：${ST_CN[st]||st}">${ICON[st]||''}</span>`;}).join('');
-  const acts=wait?`<div class="sact"><button class="btn-acc" onclick="acceptSpec('${sp.id}')"><i class="ti ti-check"></i> 通过验收</button><button class="btn-rej" onclick="rejectSpec('${sp.id}')"><i class="ti ti-arrow-back-up"></i> 打回（提问题）</button></div>`:'';
+  const jid=jss(sp.id);   // #21：spec.id 进 onclick 须 JS+HTML 双转义
+  const acts=wait?`<div class="sact"><button class="btn-acc" onclick="acceptSpec('${jid}')"><i class="ti ti-check"></i> 通过验收</button><button class="btn-rej" onclick="rejectSpec('${jid}')"><i class="ti ti-arrow-back-up"></i> 打回（提问题）</button></div>`:'';
   const cur=sp.priority||'';
   const stSel=['draft','ready','in-dev','testing','accepted'].map(s=>`<option ${sp.status===s?'selected':''}>${s}</option>`).join('');
   let prios=['P0','P1','P2','P3','Must','Should','Could']; if(cur&&!prios.includes(cur)) prios=[cur,...prios];
-  const prSel=`<option value="" ${cur===''?'selected':''}>优先级</option>`+prios.map(s=>`<option ${cur===s?'selected':''}>${s}</option>`).join('');
-  const title=(sp.title||'').replace(/'/g,'’');
+  const prSel=`<option value="" ${cur===''?'selected':''}>优先级</option>`+prios.map(s=>`<option ${cur===s?'selected':''}>${esc(s)}</option>`).join('');
   const ops=`<div class="srow-ops" onclick="event.stopPropagation()">`
-    +`<label class="opl">状态<select class="mini-sel" onchange="patchSpec('${sp.id}','status',this.value,this)">${stSel}</select></label>`
-    +`<label class="opl">优先级<select class="mini-sel" onchange="patchSpec('${sp.id}','priority',this.value,this)">${prSel}</select></label>`
+    +`<label class="opl">状态<select class="mini-sel" onchange="patchSpec('${jid}','status',this.value,this)">${stSel}</select></label>`
+    +`<label class="opl">优先级<select class="mini-sel" onchange="patchSpec('${jid}','priority',this.value,this)">${prSel}</select></label>`
     +`<span class="ophint">状态/优先级即时生效；删除·合并请勾选本行复选框后用上方模块栏的按钮</span>`
     +`</div>`;
   const sel=selSpecs.has(sp.id);
-  return `<div class="trw ${wait?'await':''} ${sel?'selrow':''}" id="spec-row-${sp.id}"><div class="trw-h">`
-    +`<input type="checkbox" class="selck" ${sel?'checked':''} onclick="event.stopPropagation();toggleSel('${sp.id}')" title="勾选以便删除/合并">`
-    +`<span class="sid" style="cursor:pointer" onclick="openSpec('${sp.id}')">${sp.id}</span>`
-    +`<span class="att" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文">${sp.title||''}</span>`
-    +`<span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span>`
-    +`<button class="row-edit" title="编辑状态/优先级" onclick="event.stopPropagation();toggleRowEdit('${sp.id}')"><i class="ti ti-pencil"></i></button>`
+  return `<div class="trw ${wait?'await':''} ${sel?'selrow':''}" id="spec-row-${esc(sp.id)}"><div class="trw-h">`
+    +`<input type="checkbox" class="selck" ${sel?'checked':''} onclick="event.stopPropagation();toggleSel('${jid}')" title="勾选以便删除/合并">`
+    +`<span class="sid" style="cursor:pointer" onclick="openSpec('${jid}')">${esc(sp.id)}</span>`
+    +`<span class="att" style="cursor:pointer" onclick="openSpec('${jid}')" title="点击查看 spec 全文">${esc(sp.title||'')}</span>`
+    +`<span class="mpipe">${dots}</span><span class="tag ${esc(pr)}">${esc(sp.priority||'')}</span><span class="${sb.cls}">${sb.label}</span>`
+    +`<button class="row-edit" title="编辑状态/优先级" onclick="event.stopPropagation();toggleRowEdit('${jid}')"><i class="ti ti-pencil"></i></button>`
     +`</div>${ops}${acts}</div>`;
 }
 let pendingHighlight=null;
@@ -506,7 +523,7 @@ function renderSpecs(){
         +`<button class="mini-btn2" ${nsel>=2?'':'disabled'} onclick="mergeSel('${ek}')" title="把勾选的合并成一条（≥2）"><i class="ti ti-arrows-join"></i> 合并${nsel>=2?'('+nsel+')':''}</button>`
         +`<button class="mini-btn2 danger" ${nsel>=1?'':'disabled'} onclick="delSel('${ek}')" title="删除勾选的（≥1）"><i class="ti ti-trash"></i> 删除${nsel>=1?'('+nsel+')':''}</button>`
         +`</span>`;
-      const head=`<div class="mgrp-h" ondragover="modDragOver(event)" ondragleave="modDragLeave(event)" ondrop="modDrop(event,'${ek}')"><span class="mgrp-drag" draggable="true" ondragstart="modDragStart(event,'${ek}')" ondragend="modDragLeave(event)" title="拖拽调整模块顺序"><i class="ti ti-grip-vertical"></i></span><span class="mgrp-t" onclick="toggleModule('${ek}')"><i class="ti ti-chevron-${collapsed?'right':'down'}"></i><span class="mgrp-n">${k}</span><span class="mgrp-c">${items.length} 条${wait?` · <b style="color:var(--c-wn)">${wait} 待验收</b>`:''}</span></span>${acts}</div>`;
+      const head=`<div class="mgrp-h" ondragover="modDragOver(event)" ondragleave="modDragLeave(event)" ondrop="modDrop(event,'${ek}')"><span class="mgrp-drag" draggable="true" ondragstart="modDragStart(event,'${ek}')" ondragend="modDragLeave(event)" title="拖拽调整模块顺序"><i class="ti ti-grip-vertical"></i></span><span class="mgrp-t" onclick="toggleModule('${ek}')"><i class="ti ti-chevron-${collapsed?'right':'down'}"></i><span class="mgrp-n">${esc(k)}</span><span class="mgrp-c">${items.length} 条${wait?` · <b style="color:var(--c-wn)">${wait} 待验收</b>`:''}</span></span>${acts}</div>`;
       return `<div class="mgrp">${head}${collapsed?'':`<div class="mgrp-b">${items.map(specRowHtml).join('')}</div>`}</div>`;
     }).join('');
   }
@@ -520,7 +537,6 @@ async function openSpec(id){
     const r=await (await fetch('/api/spec?project='+PROJECT+'&id='+encodeURIComponent(id))).json();
     if(r.error){ body.innerHTML='<div class="sst">读取失败：'+r.error+'</div>'; return; }
     document.getElementById('spec-mf').textContent=r.file||'';
-    const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     let content=r.content||'', fmHtml='';
     const m=content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);   // YAML frontmatter → 键值表
     if(m){
@@ -528,7 +544,7 @@ async function openSpec(id){
       if(rows) fmHtml=`<table class="fmtab">${rows}</table>`;
       content=content.slice(m[0].length);
     }
-    body.innerHTML = fmHtml + (window.marked ? marked.parse(content) : '<pre>'+esc(content)+'</pre>');
+    body.innerHTML = fmHtml + mdHtml(content);
     makeCollapsible(body);
     body.scrollTop=0;
   }catch(e){ body.innerHTML='<div class="sst">读取失败：'+e.message+'</div>'; }
@@ -609,7 +625,7 @@ function delSel(ek){
 function mergeSel(ek){
   const ids=specsInModule(ek); if(ids.length<2){ toast('合并至少勾选 2 条'); return; }
   mergeIds=ids;
-  const opts=ids.map(id=>{const sp=(boardData.specs||[]).find(s=>s.id===id)||{};return `<option value="${id}">${id} — ${(sp.title||'').replace(/"/g,'')}</option>`;}).join('');
+  const opts=ids.map(id=>{const sp=(boardData.specs||[]).find(s=>s.id===id)||{};return `<option value="${esc(id)}">${esc(id)} — ${esc(sp.title||'')}</option>`;}).join('');
   document.getElementById('merge-from').textContent=ids.join('、');
   document.getElementById('merge-to').innerHTML=opts;
   document.getElementById('merge-err').textContent='';
@@ -642,14 +658,14 @@ async function loadBoard(){
     document.getElementById('kpis').innerHTML=[
       ['总 spec',s.total,''],['已验收',s.accepted,'ok'],['开发中',s.inDev,'pri'],['待开发',s.ready,'wn'],['草拟',s.draft,'']
     ].map(k=>`<div class="kpi"><div class="l">${k[0]}</div><div class="v ${k[2]}">${k[1]??0}</div></div>`).join('');
-    document.getElementById('blk').innerHTML=(b.blockers&&b.blockers.length)?`<div class="blk"><i class="ti ti-alert-triangle"></i> 阻塞：${b.blockers.join('；')}</div>`:'';
+    document.getElementById('blk').innerHTML=(b.blockers&&b.blockers.length)?`<div class="blk"><i class="ti ti-alert-triangle"></i> 阻塞：${b.blockers.map(esc).join('；')}</div>`:'';
     const nodes=b.nodes||Object.keys(NODE_CN);
     const specs=b.specs||[];
     const pct=(a,t)=>t?Math.round(a/t*100):0;
     const grp={}; specs.forEach(sp=>{const p=(sp.priority||'其他').toUpperCase();(grp[p]=grp[p]||{t:0,a:0});grp[p].t++;if(sp.status==='accepted')grp[p].a++;});
     const tot=specs.length, acc=specs.filter(x=>x.status==='accepted').length;
     let ov=`<div class="mrow"><div class="ml">总体</div><div class="mbar"><div class="mfill" style="width:${pct(acc,tot)}%"></div></div><div class="mv">${acc}/${tot} 已验收</div></div>`;
-    ['P0','P1','P2'].concat(Object.keys(grp).filter(k=>!['P0','P1','P2'].includes(k))).forEach(p=>{const m=grp[p];if(!m)return;ov+=`<div class="mrow"><div class="ml"><span class="tag ${p.toLowerCase()}">${p}</span></div><div class="mbar"><div class="mfill" style="width:${pct(m.a,m.t)}%"></div></div><div class="mv">${m.a}/${m.t}</div></div>`;});
+    ['P0','P1','P2'].concat(Object.keys(grp).filter(k=>!['P0','P1','P2'].includes(k))).forEach(p=>{const m=grp[p];if(!m)return;ov+=`<div class="mrow"><div class="ml"><span class="tag ${esc(p.toLowerCase())}">${esc(p)}</span></div><div class="mbar"><div class="mfill" style="width:${pct(m.a,m.t)}%"></div></div><div class="mv">${m.a}/${m.t}</div></div>`;});
     document.getElementById('overview').innerHTML=ov;
     boardData=b; renderSpecs();
   }catch(e){document.getElementById('specs').innerHTML='<div class="sst">无法读取进度（确认 server.mjs 已启动）</div>';}
@@ -669,8 +685,8 @@ async function loadTasks(){
     ].map(k=>`<div class="kpi"><div class="l">${k[0]}</div><div class="v ${k[2]}">${k[1]}</div></div>`).join('');
     document.getElementById('tasklist').innerHTML=(t.groups||[]).map(g=>{
       const d=g.tasks.filter(x=>x.status==='done').length,n=g.tasks.length,pc=n?Math.round(d/n*100):0;
-      const rows=g.tasks.map(x=>{const pr=x.priority?`<span class="ptag ${x.priority.toLowerCase()}">${x.priority}</span>`:'';return `<div class="trow ${x.status}"><span class="tic">${TIC[x.status]||TIC.todo}</span><span class="tid">${x.id}</span><span class="ttt">${x.title}</span>${pr}<span class="test">${x.est?x.est+'d':''}</span></div>`;}).join('');
-      return `<div class="tgroup"><div class="tgh"><span class="tgn">${g.name}</span><span class="tgms">${g.milestone||''}</span><span class="tgp">${d}/${n}</span><div class="tgbar"><div class="tgfill" style="width:${pc}%"></div></div></div>${rows}</div>`;
+      const rows=g.tasks.map(x=>{const pr=x.priority?`<span class="ptag ${esc(String(x.priority).toLowerCase())}">${esc(x.priority)}</span>`:'';return `<div class="trow ${esc(x.status)}"><span class="tic">${TIC[x.status]||TIC.todo}</span><span class="tid">${esc(x.id)}</span><span class="ttt">${esc(x.title)}</span>${pr}<span class="test">${x.est?esc(x.est)+'d':''}</span></div>`;}).join('');
+      return `<div class="tgroup"><div class="tgh"><span class="tgn">${esc(g.name)}</span><span class="tgms">${esc(g.milestone||'')}</span><span class="tgp">${d}/${n}</span><div class="tgbar"><div class="tgfill" style="width:${pc}%"></div></div></div>${rows}</div>`;
     }).join('')||'<div class="sst" style="padding:6px">该项目暂无任务清单</div>';
   }catch(e){document.getElementById('tasklist').innerHTML='<div class="sst" style="padding:6px">无法读取任务清单</div>';}
 }
@@ -679,7 +695,7 @@ async function loadAgents(){
     const a=await (await fetch('/api/agents?project='+PROJECT+'&t='+Date.now())).json();
     document.getElementById('team').innerHTML=(a.agents||[]).map(g=>{
       const run=g.status==='running';
-      return `<div class="agent ${g.status}" onclick="editAgent('${g.id}')" title="点击编辑该 agent 的提示词"><div class="aic"><i class="ti ti-${g.icon}"></i></div><div class="am"><div class="anm">${g.name}</div><div class="ast" title="${run?(g.current||''):'空闲'}">${run?(g.current||'运行中'):'空闲'}</div></div><span class="adot ${g.status}"></span><span class="edit"><i class="ti ti-pencil"></i></span></div>`;
+      return `<div class="agent ${esc(g.status)}" onclick="editAgent('${jss(g.id)}')" title="点击编辑该 agent 的提示词"><div class="aic"><i class="ti ti-${esc(g.icon)}"></i></div><div class="am"><div class="anm">${esc(g.name)}</div><div class="ast" title="${run?esc(g.current||''):'空闲'}">${run?esc(g.current||'运行中'):'空闲'}</div></div><span class="adot ${esc(g.status)}"></span><span class="edit"><i class="ti ti-pencil"></i></span></div>`;
     }).join('')||'<div class="sst">该项目暂无团队状态</div>';
   }catch(e){document.getElementById('team').innerHTML='<div class="sst">无法读取团队状态</div>';}
 }
@@ -745,7 +761,7 @@ function renderTabs(){
     const lab = (st.title&&st.title.trim()) ? st.title : w.label;   // 用会话话题做标签，便于区分
     const act = (st.activity&&st.activity.trim())? st.activity : '';
     const tip=('话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')).replace(/"/g,'');
-    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${tip}"><span class="tdot ${s}"></span><span class="tl">${lab}</span><span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
+    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${esc(tip)}"><span class="tdot ${s}"></span><span class="tl">${esc(lab)}</span><span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
   }).join('');
   renderTeam();   // 开发状态与窗口标签同源，随之刷新
 }
@@ -781,11 +797,10 @@ async function toggleCmds(){
   try{
     const r=await (await fetch('/api/commands?project='+PROJECT)).json();
     const cs=r.commands||[];
-    const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     pop.innerHTML='<div class="hpt">本项目命令 / 提示词（点命令名填入输入框；点「编辑」改提示词，对本项目即时生效）</div>'
       +'<div class="hrow" onclick="editPrompt(\'manual\',\'\',\'编排手册 CLAUDE.md\')"><div class="hp1"><b style="color:var(--c-pu)">✎ 编排手册 CLAUDE.md</b></div><div class="hp2" style="white-space:normal">项目方法论主文档（角色 / 护栏 / 纪律）——点开可看/改</div></div>'
       +'<div class="hrow" onclick="editPrompt(\'lessons\',\'\',\'本项目经验库 docs/lessons.md\')"><div class="hp1"><b style="color:var(--c-pu)">✎ 本项目经验库 docs/lessons.md</b></div><div class="hp2" style="white-space:normal">本项目专属踩坑（通用的在顶栏「📖 经验库」=全局共享）</div></div>'
-      +(cs.length?cs.map(c=>`<div class="hrow" onclick="useCmd('${c.name}')"><div class="hp1"><b style="color:var(--c-pri);font-family:var(--fe)">/${c.name}</b><span class="cmd-edit" onclick="event.stopPropagation();editPrompt('command','${c.name}','/${c.name}')">编辑</span></div><div class="hp2" style="white-space:normal">${esc(c.desc)}</div></div>`).join(''):'<div class="sst" style="padding:10px">该项目暂无命令</div>');
+      +(cs.length?cs.map(c=>`<div class="hrow" onclick="useCmd('${jss(c.name)}')"><div class="hp1"><b style="color:var(--c-pri);font-family:var(--fe)">/${esc(c.name)}</b><span class="cmd-edit" onclick="event.stopPropagation();editPrompt('command','${jss(c.name)}','/${jss(c.name)}')">编辑</span></div><div class="hp2" style="white-space:normal">${esc(c.desc)}</div></div>`).join(''):'<div class="sst" style="padding:10px">该项目暂无命令</div>');
   }catch(e){ pop.innerHTML='<div class="hpt">命令</div><div class="sst" style="padding:10px">读取失败</div>'; }
 }
 function useCmd(name){
@@ -800,7 +815,7 @@ async function toggleHistory(){
   try{
     const r=await (await fetch('/api/claude-sessions?path='+encodeURIComponent(projPath(PROJECT)))).json();
     const ss=r.sessions||[];
-    pop.innerHTML='<div class="hpt">该项目的所有对话（点开为新窗口继续）</div>'+(ss.length?ss.map(s=>{const lb=(s.preview||'对话').replace(/['"\\]/g,'').slice(0,14);return `<div class="hrow" onclick="openSession('${s.id}','${lb}')"><div class="hp1">${s.preview||'(无预览)'}</div><div class="hp2">${new Date(s.mtime).toLocaleString()} · ${s.id.slice(0,8)}</div><button class="hdel" title="删除这段历史对话" onclick="event.stopPropagation();delSession('${s.id}')"><i class="ti ti-trash"></i></button></div>`;}).join(''):'<div class="sst" style="padding:10px">暂无历史对话</div>');
+    pop.innerHTML='<div class="hpt">该项目的所有对话（点开为新窗口继续）</div>'+(ss.length?ss.map(s=>{const lb=(s.preview||'对话').slice(0,14);return `<div class="hrow" onclick="openSession('${jss(s.id)}','${jss(lb)}')"><div class="hp1">${esc(s.preview||'(无预览)')}</div><div class="hp2">${esc(new Date(s.mtime).toLocaleString())} · ${esc(String(s.id).slice(0,8))}</div><button class="hdel" title="删除这段历史对话" onclick="event.stopPropagation();delSession('${jss(s.id)}')"><i class="ti ti-trash"></i></button></div>`;}).join(''):'<div class="sst" style="padding:10px">暂无历史对话</div>');
   }catch(e){ pop.innerHTML='<div class="hpt">历史对话</div><div class="sst" style="padding:10px">读取失败</div>'; }
 }
 function delSession(id){
@@ -824,7 +839,7 @@ function renderTeam(){
     if(st.busy){ name = act || '正在干活'; sub = topic; }   // 忙：大字=最新在干啥（实时），副=会话话题
     else { name = topic; sub = stt; }                       // 黄空闲/红需确认：大字=话题，副=状态
     const tip=('话题：'+topic+'\n'+(st.busy?('在干：'+(act||'正在干活')):('状态：'+stt))).replace(/"/g,'');
-    return `<div class="agent ${s}" onclick="focusWindow('${w.key}')" title="${tip}"><div class="aic"><i class="ti ti-user-code"></i></div><div class="am"><div class="anm">${name}</div><div class="ast">${sub}</div></div><span class="adot ${s}"></span></div>`;
+    return `<div class="agent ${s}" onclick="focusWindow('${jss(w.key)}')" title="${esc(tip)}"><div class="aic"><i class="ti ti-user-code"></i></div><div class="am"><div class="anm">${esc(name)}</div><div class="ast">${esc(sub)}</div></div><span class="adot ${s}"></span></div>`;
   }).join('');
 }
 function focusWindow(key){ const i=windows.findIndex(w=>w.key===key); if(i<0)return; setMode('term'); activate(i); }
@@ -833,7 +848,7 @@ async function loadProjects(){
     const r=await (await fetch('/api/projects')).json();
     PROJECTS=r.projects||[];
     const sel=document.getElementById('proj');
-    sel.innerHTML=PROJECTS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    sel.innerHTML=PROJECTS.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
     PROJECT=PROJECTS[0]?PROJECTS[0].id:'';
     sel.value=PROJECT; renderProjSpread(); applyProjView(); renderEmptyCta();
   }catch(e){}
@@ -852,9 +867,22 @@ async function loadHealth(){   // 上手就绪条（#5）：工具就绪即时�
       +`<span class="rchip clk ${h.claude.found?'ok':'bad'}" title="${(h.claude.bin||'').replace(/"/g,'')}" onclick="checkLogin(this)">${h.claude.found?'✓ claude（点测登录）':'✗ claude 未找到'}</span>`
       +chip(h.ttyd,'ttyd', h.ttyd?'内嵌终端可用':'内嵌终端不可用：brew install ttyd 后重启')
       +chip(h.tmux,'tmux', h.tmux?'会话持久化可用':'会话持久化不可用：brew install tmux 后重启')
-      +`<span class="rk2">node ${h.node}</span>`;
+      +notifyChip()
+      +`<span class="rk2">node ${esc(h.node)}</span>`;
     bar.style.display='flex';
   }catch(e){}
+}
+// #11 通知 chip：浏览器只在用户手势里才弹授权框，所以不在加载时自动 requestPermission，改为点 chip 触发
+function notifyChip(){
+  if(!('Notification' in window)) return `<span class="rchip bad" title="此浏览器不支持桌面通知">✗ 通知 不支持</span>`;
+  const p=Notification.permission;
+  if(p==='granted') return `<span class="rchip ok" title="窗口干完/需介入时会弹桌面通知">✓ 通知已开</span>`;
+  if(p==='denied')  return `<span class="rchip bad" title="已被拒：到浏览器地址栏左侧站点设置里把通知改为允许">✗ 通知被拒</span>`;
+  return `<span class="rchip clk bad" title="点一下开启桌面通知：窗口干完/需介入时提醒你" onclick="requestNotify(this)">🔔 开启通知</span>`;
+}
+function requestNotify(el){
+  if(!('Notification' in window)) return;
+  try{ Notification.requestPermission().then(p=>{ loadHealth(); if(p==='granted'){ toast('通知已开启 · 窗口干完/需介入时会提醒你'); try{ new Notification('Steward · 通知已开启',{body:'有需要你介入的事会在这里提醒。'}); }catch(e){} } else if(p==='denied'){ toast('通知被拒——可到浏览器站点设置里改回允许'); } }); }catch(e){}
 }
 async function checkLogin(el){
   const old=el.textContent; el.textContent='⏳ claude 测登录中…';
@@ -876,7 +904,7 @@ function applyProjView(){
 function toggleProjView(){ projViewMode = projViewMode==='spread'?'select':'spread'; try{localStorage.setItem('projView',projViewMode);}catch{} renderProjSpread(); applyProjView(); }
 function renderProjSpread(){
   const sp=document.getElementById('proj-spread'); if(!sp)return;
-  sp.innerHTML=PROJECTS.map(p=>`<span class="projchip ${p.id===PROJECT?'on':''}" onclick="selectProject('${p.id}')" title="${p.name}">${p.name}<i class="ti ti-x projchip-x" onclick="event.stopPropagation();removeProject('${p.id}')" title="移除「${p.name}」"></i></span>`).join('');
+  sp.innerHTML=PROJECTS.map(p=>`<span class="projchip ${p.id===PROJECT?'on':''}" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}">${esc(p.name)}<i class="ti ti-x projchip-x" onclick="event.stopPropagation();removeProject('${jss(p.id)}')" title="移除「${esc(p.name)}」"></i></span>`).join('');
 }
 function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal(); }
 function onProj(){ selectProject(document.getElementById('proj').value); }
@@ -934,7 +962,6 @@ async function fsBrowse(p){
     const r=await (await fetch('/api/fs-list?path='+encodeURIComponent(p||'')+(fsPickFile?'&files=1':''))).json();
     fsCur=r.path; fsParent=r.parent; const base=r.path.endsWith('/')?r.path:r.path+'/';
     fsDirs=(r.dirs||[]).map(d=>base+d); fsFiles=(r.files||[]).map(f=>base+f);
-    const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     let h='<div class="fsbar">'+(r.parent?'<button type="button" class="fsup" onclick="fsBrowse(fsParent)"><i class="ti ti-arrow-up"></i> 上级</button>':'')+'<span class="fscur" title="'+esc(r.path)+'">'+esc(r.path)+'</span></div>';
     let rows=(r.dirs||[]).map((d,i)=>'<div class="fsrow" onclick="fsInto('+i+')"><i class="ti ti-folder"></i> '+esc(d)+'</div>').join('');
     if(fsPickFile) rows+=(r.files||[]).map((f,i)=>'<div class="fsrow" onclick="fsPickFileAt('+i+')"><i class="ti ti-file"></i> '+esc(f)+'</div>').join('');
@@ -957,7 +984,7 @@ async function detectSessions(){
     if(!ss.length){ box.innerHTML='<div class="sst" style="padding:4px">该路径下暂无 claude 历史对话（新对话即可）。</div>'; pSession=''; return; }
     let h='<div class="psl">检测到该路径的 claude 对话（可选一个绑定进去，继续聊）：</div>';
     h+='<label class="sess on" onclick="pickSess(this,\'\')"><input type="radio" name="ps" checked><div class="sx"><div class="sp1">不绑定 · 开新对话</div></div></label>';
-    h+=ss.map(s=>`<label class="sess" onclick="pickSess(this,'${s.id}')"><input type="radio" name="ps"><div class="sx"><div class="sp1">${s.preview||'(无预览)'}</div><div class="sp2">${new Date(s.mtime).toLocaleString()} · ${s.id.slice(0,8)}</div></div></label>`).join('');
+    h+=ss.map(s=>`<label class="sess" onclick="pickSess(this,'${jss(s.id)}')"><input type="radio" name="ps"><div class="sx"><div class="sp1">${esc(s.preview||'(无预览)')}</div><div class="sp2">${esc(new Date(s.mtime).toLocaleString())} · ${esc(String(s.id).slice(0,8))}</div></div></label>`).join('');
     box.innerHTML=h; pSession='';
   }catch(e){ box.innerHTML='<div class="sst">检测失败：'+e.message+'</div>'; }
 }
@@ -1033,7 +1060,7 @@ async function editPrompt(kind,name,label){   // 查看/编辑命令提示词或
   }catch(e){ alert('读取失败：'+e.message); }
 }
 function closeAgent(){ document.getElementById('amask').classList.remove('on'); }
-function amRender(){ const v=document.getElementById('amview'), t=document.getElementById('amtext').value; v.innerHTML = window.marked ? marked.parse(t) : ('<pre>'+t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>'); makeCollapsible(v); }
+function amRender(){ const v=document.getElementById('amview'), t=document.getElementById('amtext').value; v.innerHTML = mdHtml(t); makeCollapsible(v); }
 function amSetMode(edit){   // edit=false 渲染查看，true 文本框编辑
   document.getElementById('amview').style.display = edit?'none':'';
   document.getElementById('amtext').style.display = edit?'':'none';
@@ -1112,7 +1139,8 @@ async function loadInbox(notify){
     const badge=document.getElementById('inbox-badge');
     if(items.length){ badge.style.display=''; badge.textContent=items.length; } else badge.style.display='none';
     const head='<div class="hpt">需要你介入 · 点条目定位'+(ign?` <span class="ibtn" onclick="clearIgnored(event)">（已忽略 ${ign}，恢复）</span>`:'')+'</div>';
-    document.getElementById('inbox-pop').innerHTML=head+(items.length?items.map(it=>{const k=inboxKey(it);return `<div class="hrow" onclick="gotoItem('${it.project}','${it.spec}','${it.kind}')"><div class="hp1">${it.label} · ${it.spec} ${it.title}</div><div class="hp2">${it.projectName}</div><button class="hdel" title="忽略" onclick="ignoreItem(event,'${k}')"><i class="ti ti-x"></i></button></div>`;}).join(''):`<div class="sst" style="padding:12px">${ign?'都已忽略':'暂无，安心等结果即可'}</div>`);
+    document.getElementById('inbox-pop').innerHTML=head+(items.length?items.map(it=>{const k=inboxKey(it);return `<div class="hrow" onclick="gotoItem('${jss(it.project)}','${jss(it.spec)}','${jss(it.kind)}')"><div class="hp1">${esc(it.label)} · ${esc(it.spec)} ${esc(it.title)}</div><div class="hp2">${esc(it.projectName)}</div><button class="hdel" title="忽略" onclick="ignoreItem(event,'${jss(k)}')"><i class="ti ti-x"></i></button></div>`;}).join(''):`<div class="sst" style="padding:12px">${ign?'都已忽略':'暂无，安心等结果即可'}</div>`);
+    renderActionBar(items);   // #13：同源渲染左栏「待你处理」行动条
     all.forEach(it=>{ const key=inboxKey(it);
       if(!inboxSeen.has(key)){ inboxSeen.add(key); if(notify&&inboxInit&&!ignoredInbox.has(key)&&window.Notification&&Notification.permission==='granted') new Notification('Steward · 需要你介入',{body:`[${it.projectName}] ${it.label} ${it.spec} ${it.title}`}); }
     });
@@ -1125,8 +1153,18 @@ function gotoItem(pid, spec, kind){   // 切到该项目 → 筛到对应类别 
   selectProject(pid);
   if(spec){ if(kind==='accept')specFilter='await'; collapsedModules.clear(); pendingHighlight=spec; renderSpecs(); }
 }
+// #13 左栏「待你处理」行动条：只列当前项目待办，按类型上色，点条目定位；为 0 时整条收起
+const ABKIND={accept:{c:'var(--c-ok)',i:'ti-checks'},fail:{c:'var(--c-dg)',i:'ti-alert-triangle'},stuck:{c:'var(--c-wn)',i:'ti-clock-exclamation'},decision:{c:'var(--c-wn)',i:'ti-help-circle'}};
+function renderActionBar(items){
+  const bar=document.getElementById('action-bar'); if(!bar)return;
+  const mine=(items||[]).filter(it=>it.project===PROJECT);
+  if(!mine.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+  bar.style.display='block';
+  bar.innerHTML=`<div class="ab-h"><i class="ti ti-hand-stop"></i> 待你处理 <b>${mine.length}</b> 项</div>`
+    + mine.map(it=>{const k=ABKIND[it.kind]||{c:'var(--c-wn)',i:'ti-point'};
+        return `<div class="ab-item" style="border-left-color:${k.c}" onclick="gotoItem('${jss(it.project)}','${jss(it.spec)}','${jss(it.kind)}')" title="${esc(it.label+' · '+(it.spec?it.spec+' ':'')+it.title)}"><i class="ti ${k.i}" style="color:${k.c}"></i><span class="ab-l" style="color:${k.c}">${esc(it.label)}</span><span class="ab-t">${esc((it.spec?it.spec+' ':'')+it.title)}</span></div>`;}).join('');
+}
 
-if(window.Notification && Notification.permission==='default') Notification.requestPermission();
 
 // 实时刷新：看板/任务/团队 + 对话流式 + 通知
 try{
