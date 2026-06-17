@@ -80,6 +80,7 @@ bash tools/start.sh          # → http://127.0.0.1:5178
 | `/build <id>` | Implement one feature per spec (dev agent: implement + test + real-DB smoke) |
 | `/fix <bug/change>` | Close the loop on a bug/change (breakdown + impact → edit spec/test → edit code → regress) |
 | `/accept <id>` | Acceptance loop (produce acceptance materials + spec-diff confirmation; rejection auto-drives the fix) |
+| `/lesson [pitfall]` | Distill a just-solved pitfall into the shared lessons base (`~/.steward/lessons.md`, cross-project) |
 | `/autopilot [scope]` | Autopilot: parallelize across modules, drive each feature to "pending acceptance" |
 
 ---
