@@ -15,7 +15,7 @@ const ICON = { todo: '⬜', doing: '🔄', pass: '✅', fail: '❌', wait: '⏸�
 
 function readFm(file) {
   const txt = fs.readFileSync(file, 'utf8');
-  const m = txt.match(/^---\n([\s\S]*?)\n---/);
+  const m = txt.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/);
   const fm = {};
   if (m) for (const line of m[1].split('\n')) {
     const i = line.indexOf(':');
@@ -41,17 +41,19 @@ function specNodes(id, status) {
 }
 
 function build() {
-  const specs = [];
+  const specs = [], seen = new Map(), dups = [];   // #20：同 id 去重（首个为准），重复登记到 blockers 提示人
   if (fs.existsSync(SPECS)) for (const f of fs.readdirSync(SPECS)) {
     if (!f.endsWith('.md') || f.startsWith('_') || f.toLowerCase() === 'readme.md') continue;
     const fm = readFm(path.join(SPECS, f));
     if (!fm.id) continue;
+    if (seen.has(fm.id)) { dups.push(`${fm.id}（docs/specs/${f} 与 ${seen.get(fm.id)} 重复，已忽略后者）`); continue; }
+    seen.set(fm.id, f);
     specs.push({ id: fm.id, title: fm.title || '', priority: (fm.priority || '').split('/')[0].trim(), status: fm.status || 'draft', file: 'docs/specs/' + f, nodes: specNodes(fm.id, fm.status || 'draft') });
   }
   specs.sort((a, b) => a.id.localeCompare(b.id));
 
   const summary = { total: specs.length, accepted: specs.filter(s => s.status === 'accepted').length, inDev: specs.filter(s => ['in-dev', 'testing'].includes(s.status)).length, ready: specs.filter(s => s.status === 'ready').length, draft: specs.filter(s => s.status === 'draft').length };
-  const blockers = specs.filter(s => Object.values(s.nodes).includes('fail')).map(s => `${s.id} 有节点失败/驳回`);
+  const blockers = specs.filter(s => Object.values(s.nodes).includes('fail')).map(s => `${s.id} 有节点失败/驳回`).concat(dups.map(d => '重复 spec id：' + d));
   const board = { generatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19), nodes: NODES, nodeCn: NODE_CN, specs, summary, blockers };
 
   fs.writeFileSync(path.join(ROOT, 'docs/board.json'), JSON.stringify(board, null, 2));

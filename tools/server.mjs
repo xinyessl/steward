@@ -289,7 +289,7 @@ function loadProjects() {
   try { return JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')).projects || []; }
   catch { return []; }   // 空工具：还没纳管任何项目
 }
-function projById(id) { const ps = loadProjects(); return ps.find(p => p.id === id) || ps[0]; }
+function projById(id) { const ps = loadProjects(); return ps.find(p => p.id === id) || null; }   // #16：未知/缺失 id 返回 null（不再兜底到第一个项目），避免写操作静默落到错误项目
 function genBoard(projPath) { const bm = path.join(projPath, 'tools/board.mjs'); if (fs.existsSync(bm)) { try { spawnSync('node', [bm], { cwd: projPath }); } catch {} } }   // 同步：避免与连接 body 读取并发 spawn 的 fd 竞态
 function send(res, code, body, type = 'application/json') { res.writeHead(code, { 'Content-Type': type }); res.end(body); }
 function readOr(file, fallback) { try { return fs.readFileSync(file); } catch { return fallback; } }
@@ -363,9 +363,10 @@ const server = http.createServer((req, res) => {
     if (!fs.existsSync(f)) genBoard(p.path);   // 首次惰性生成（同步）
     return finish();
   }
-  if (url.pathname === '/api/tasks') return send(res, 200, readOr(path.join(projById(pid).path, 'docs/tasks.json'), '{"groups":[]}'));
+  if (url.pathname === '/api/tasks') { const p = projById(pid); return send(res, 200, p ? readOr(path.join(p.path, 'docs/tasks.json'), '{"groups":[]}') : '{"groups":[]}'); }
   if (url.pathname === '/api/spec') {
     const p = projById(pid), id = (url.searchParams.get('id') || '').trim();
+    if (!p) return send(res, 404, JSON.stringify({ error: '项目不存在' }));
     if (!/^[A-Za-z0-9_-]+$/.test(id)) return send(res, 400, JSON.stringify({ error: '非法 spec id' }));
     const dir = path.join(p.path, 'docs/specs');
     let file = ''; try { file = fs.readdirSync(dir).find(f => f.endsWith('.md') && (f === id + '.md' || f.startsWith(id + '-') || f.startsWith(id + ' '))); } catch {}
@@ -393,6 +394,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/agents') {
     const proj = projById(pid);
+    if (!proj) return send(res, 200, JSON.stringify({ agents: [] }));
     let roster = { agents: [] };
     try { roster = JSON.parse(fs.readFileSync(path.join(proj.path, 'docs/.state/agents.json'), 'utf8')); } catch {}
     let board = {};
@@ -427,7 +429,8 @@ const server = http.createServer((req, res) => {
     return send(res, 200, JSON.stringify({ items }));
   }
   if (url.pathname === '/api/accept' && req.method === 'POST') {
-    const p = projById(pid); let buf = '';
+    const p = projById(pid); if (!p) return send(res, 400, JSON.stringify({ ok: false, error: '项目不存在' }));
+    let buf = '';
     req.on('data', c => (buf += c));
     req.on('end', () => {
       let spec = ''; try { spec = (JSON.parse(buf).spec || '').trim(); } catch {}
@@ -439,7 +442,7 @@ const server = http.createServer((req, res) => {
       const fp = path.join(dir, file);
       try {
         let txt = fs.readFileSync(fp, 'utf8');
-        const m = txt.match(/^(---\n)([\s\S]*?)(\n---)/);
+        const m = txt.match(/^﻿?(---\r?\n)([\s\S]*?)(\r?\n---)/);   // #19：容 CRLF / UTF-8 BOM，避免 spec 静默无法解析
         if (m) {
           let fm = m[2];
           fm = /^status:/m.test(fm) ? fm.replace(/^status:[ \t]*.*$/m, 'status: accepted') : fm + '\nstatus: accepted';
@@ -466,7 +469,7 @@ const server = http.createServer((req, res) => {
       const spec = (b.spec || '').trim(), field = (b.field || '').trim(), value = (b.value || '').trim();
       if (!/^[A-Za-z0-9_-]+$/.test(spec)) return send(res, 400, JSON.stringify({ ok: false, error: '非法 spec' }));
       const ALLOW = { status: ['draft', 'ready', 'in-dev', 'testing', 'accepted'], priority: ['P0', 'P1', 'P2', 'P3', 'Must', 'Should', 'Could'] };
-      if (!ALLOW[field]) return send(res, 400, JSON.stringify({ ok: false, error: '该字段不可直接改（语义字段请走编排器）' }));
+      if (!Object.prototype.hasOwnProperty.call(ALLOW, field)) return send(res, 400, JSON.stringify({ ok: false, error: '该字段不可直接改（语义字段请走编排器）' }));   // #17：用 hasOwnProperty，防 __proto__/constructor 命中原型绕过白名单
       if (!ALLOW[field].includes(value)) return send(res, 400, JSON.stringify({ ok: false, error: '非法值' }));
       const dir = path.join(p.path, 'docs/specs');
       let file = ''; try { file = fs.readdirSync(dir).find(f => f.endsWith('.md') && (f === spec + '.md' || f.startsWith(spec + '-') || f.startsWith(spec + ' '))); } catch {}
@@ -474,7 +477,7 @@ const server = http.createServer((req, res) => {
       const fp = path.join(dir, file);
       try {
         let txt = fs.readFileSync(fp, 'utf8');
-        const m = txt.match(/^(---\n)([\s\S]*?)(\n---)/);
+        const m = txt.match(/^﻿?(---\r?\n)([\s\S]*?)(\r?\n---)/);   // #19：容 CRLF / UTF-8 BOM，避免 spec 静默无法解析
         if (!m) return send(res, 400, JSON.stringify({ ok: false, error: 'spec 缺少 frontmatter' }));
         let fm = m[2];
         const re = new RegExp('^' + field + ':[ \\t]*.*$', 'm');
@@ -497,6 +500,11 @@ const server = http.createServer((req, res) => {
       if (!/^[A-Za-z0-9_-]+$/.test(to) || !froms.length || froms.some(f => !/^[A-Za-z0-9_-]+$/.test(f))) return send(res, 400, JSON.stringify({ ok: false, error: '非法 spec' }));
       froms = [...new Set(froms)].filter(f => f !== to);
       if (!froms.length) return send(res, 400, JSON.stringify({ ok: false, error: '不能只合并到自己' }));
+      // #18：调 LLM 前先确认每个 from / to 的 spec 文件真存在（沿用本文件别处的「按 id 找文件名」约定），缺失就 400，别白烧 token
+      let names = []; try { names = fs.readdirSync(path.join(p.path, 'docs/specs')).filter(f => f.endsWith('.md')); } catch {}
+      const has = id => names.some(f => f === id + '.md' || f.startsWith(id + '-') || f.startsWith(id + ' '));
+      const missing = [to, ...froms].filter(id => !has(id));
+      if (missing.length) return send(res, 400, JSON.stringify({ ok: false, error: 'spec 不存在：' + missing.join('、') }));
       const fl = froms.join('、');
       const prompt = `把 spec ${fl} 合并进 spec ${to}，**直接执行改文件，不要只给建议**：\n`
         + `1) 读 docs/specs 下这些（${fl} 和 ${to}）；按 CLAUDE.md §4.6 算影响面（谁 depends_on 这些源、共享表/接口/同模块）。\n`
@@ -559,7 +567,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/claude-sessions') { const abs = url.searchParams.get('path') || ''; return send(res, 200, JSON.stringify({ sessions: abs ? listClaudeSessions(abs) : [] })); }
   if (url.pathname === '/api/commands') {   // 该项目可用的斜杠命令（读 .claude/commands/*.md 的名字+description）
-    const p = projById(pid); const dir = path.join(p.path, '.claude/commands'); const out = [];
+    const p = projById(pid); if (!p) return send(res, 200, JSON.stringify({ commands: [] })); const dir = path.join(p.path, '.claude/commands'); const out = [];
     try { for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.md')) continue; let desc = ''; try { const m = fs.readFileSync(path.join(dir, f), 'utf8').slice(0, 800).match(/^description:\s*(.+)$/m); if (m) desc = m[1].trim(); } catch {} out.push({ name: f.replace(/\.md$/, ''), desc }); } } catch {}
     out.sort((a, b) => a.name.localeCompare(b.name));
     return send(res, 200, JSON.stringify({ commands: out }));
@@ -685,6 +693,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/agent-file') {
     const p = projById(pid);
+    if (!p) return send(res, 400, JSON.stringify({ error: '项目不存在' }));
     const id = (url.searchParams.get('id') || '').replace(/[^a-z0-9_-]/gi, '');   // 防路径穿越
     if (!id) return send(res, 400, JSON.stringify({ error: 'bad id' }));
     const f = path.join(p.path, '.claude/agents/' + id + '.md');
