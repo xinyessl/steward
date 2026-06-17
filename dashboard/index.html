@@ -516,7 +516,7 @@ function makeCollapsible(root){
   const kids=[...root.childNodes]; const frag=document.createDocumentFragment(); let curBody=null;
   for(const node of kids){
     if(node.nodeType===1 && node.tagName==='H2'){
-      const sec=document.createElement('div'); sec.className='md-sec';
+      const sec=document.createElement('div'); sec.className='md-sec collapsed';   // 默认收起，点标题展开
       node.classList.add('md-sec-h');
       const chev=document.createElement('span'); chev.className='md-chev'; chev.textContent='▾';
       node.insertBefore(chev, node.firstChild);
