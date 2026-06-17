@@ -195,6 +195,10 @@ body.resizing #term-host iframe{pointer-events:none}
 .md blockquote{border-left:3px solid var(--c-pri-b);background:var(--c-pri-l);margin:10px 0;padding:6px 12px;color:var(--c-t2)}
 .md a{color:var(--c-pri)}.md hr{border:none;border-top:1px solid var(--c-bd);margin:14px 0}
 .md h1:first-child,.md h2:first-child{margin-top:0}
+.md-sec-h{cursor:pointer;user-select:none}.md-sec-h:hover{color:var(--c-pri)}
+.md-chev{display:inline-block;width:1em;font-size:11px;color:var(--c-t3);transition:transform .15s}
+.md-sec.collapsed .md-chev{transform:rotate(-90deg)}
+.md-sec.collapsed .md-sec-b{display:none}
 .fmtab{border-collapse:collapse;margin:0 0 16px;font-size:12.5px;width:100%}
 .fmtab td{border:1px solid var(--c-bd);padding:4px 11px;vertical-align:top}
 .fmtab .fk{background:var(--c-bg);font-weight:600;color:var(--c-t2);white-space:nowrap;width:1%;font-family:var(--fe)}
@@ -503,8 +507,25 @@ async function openSpec(id){
       content=content.slice(m[0].length);
     }
     body.innerHTML = fmHtml + (window.marked ? marked.parse(content) : '<pre>'+esc(content)+'</pre>');
+    makeCollapsible(body);
     body.scrollTop=0;
   }catch(e){ body.innerHTML='<div class="sst">读取失败：'+e.message+'</div>'; }
+}
+// 把渲染后的 markdown 按 h2 标题分段，点标题折叠/展开该段（h2 之前的 frontmatter/简介保持常显）
+function makeCollapsible(root){
+  const kids=[...root.childNodes]; const frag=document.createDocumentFragment(); let curBody=null;
+  for(const node of kids){
+    if(node.nodeType===1 && node.tagName==='H2'){
+      const sec=document.createElement('div'); sec.className='md-sec';
+      node.classList.add('md-sec-h');
+      const chev=document.createElement('span'); chev.className='md-chev'; chev.textContent='▾';
+      node.insertBefore(chev, node.firstChild);
+      node.addEventListener('click',()=>sec.classList.toggle('collapsed'));
+      const b=document.createElement('div'); b.className='md-sec-b';
+      sec.appendChild(node); sec.appendChild(b); frag.appendChild(sec); curBody=b;
+    } else { (curBody||frag).appendChild(node); }
+  }
+  root.innerHTML=''; root.appendChild(frag);
 }
 function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); }
 // 页面内确认弹窗（替代原生 confirm）
@@ -990,7 +1011,7 @@ async function editPrompt(kind,name,label){   // 查看/编辑命令提示词或
   }catch(e){ alert('读取失败：'+e.message); }
 }
 function closeAgent(){ document.getElementById('amask').classList.remove('on'); }
-function amRender(){ const t=document.getElementById('amtext').value; document.getElementById('amview').innerHTML = window.marked ? marked.parse(t) : ('<pre>'+t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>'); }
+function amRender(){ const v=document.getElementById('amview'), t=document.getElementById('amtext').value; v.innerHTML = window.marked ? marked.parse(t) : ('<pre>'+t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>'); makeCollapsible(v); }
 function amSetMode(edit){   // edit=false 渲染查看，true 文本框编辑
   document.getElementById('amview').style.display = edit?'none':'';
   document.getElementById('amtext').style.display = edit?'':'none';
