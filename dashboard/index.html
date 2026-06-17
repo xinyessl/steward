@@ -134,6 +134,8 @@ body.resizing #term-host iframe{pointer-events:none}
 .mgrp-h .mgrp-n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mgrp-h .mgrp-c{font-size:11px;font-weight:500;color:var(--c-t3);white-space:nowrap}
 .mgrp-acts{display:flex;gap:6px;flex-shrink:0}
+.mgrp-drag{cursor:grab;color:var(--c-t3);display:inline-flex;align-items:center}.mgrp-drag:active{cursor:grabbing}.mgrp-drag:hover{color:var(--c-pri)}
+.mgrp-h.dragover{outline:2px dashed var(--c-pri);outline-offset:-2px}
 .mini-btn2:disabled{opacity:.4;cursor:not-allowed}
 .selck{width:15px;height:15px;accent-color:var(--c-pri);cursor:pointer;flex-shrink:0;margin:0}
 .trw.selrow{border-color:var(--c-pri-b);background:var(--c-pri-l)}
@@ -444,6 +446,14 @@ let groupByMod = (()=>{ try{return localStorage.getItem('specGroup')!=='flat';}c
 let collapsedModules=new Set();
 function toggleGroupMod(){ groupByMod=!groupByMod; try{localStorage.setItem('specGroup',groupByMod?'group':'flat');}catch{} renderSpecs(); }
 function toggleModule(ek){ const k=decodeURIComponent(ek); if(collapsedModules.has(k))collapsedModules.delete(k); else collapsedModules.add(k); renderSpecs(); }
+// —— 模块拖拽排序（顺序按项目存 localStorage）——
+let draggedMod=null, lastModOrder=[];
+function loadModOrder(){ try{return JSON.parse(localStorage.getItem('modOrder:'+PROJECT))||[];}catch{return[];} }
+function saveModOrder(a){ try{localStorage.setItem('modOrder:'+PROJECT, JSON.stringify(a));}catch{} }
+function modDragStart(e,ek){ draggedMod=decodeURIComponent(ek); try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedMod);}catch{} }
+function modDragOver(e){ e.preventDefault(); try{e.dataTransfer.dropEffect='move';}catch{} e.currentTarget.classList.add('dragover'); }
+function modDragLeave(e){ e.currentTarget.classList.remove('dragover'); }
+function modDrop(e,ek){ e.preventDefault(); document.querySelectorAll('.mgrp-h.dragover').forEach(x=>x.classList.remove('dragover')); const target=decodeURIComponent(ek); if(!draggedMod||draggedMod===target){draggedMod=null;return;} const arr=lastModOrder.slice(); const from=arr.indexOf(draggedMod); if(from>=0)arr.splice(from,1); let ti=arr.indexOf(target); if(ti<0)ti=arr.length; arr.splice(ti,0,draggedMod); saveModOrder(arr); draggedMod=null; renderSpecs(); }
 function specRowHtml(sp){
   const nodes=boardData.nodes||Object.keys(NODE_CN);
   const pr=(sp.priority||'').toLowerCase(), wait=specCat(sp)==='await', sb=stageBadge(sp);
@@ -486,6 +496,9 @@ function renderSpecs(){
   else {
     const groups={}, order=[];   // 按 module 分组
     list.forEach(sp=>{ const k=(sp.module&&sp.module.trim())||'（未标模块）'; if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(sp); });
+    const saved=loadModOrder();   // 自定义模块顺序（拖拽得来）：已存的按存的来，新模块排后面
+    order.sort((a,b)=>{ let ia=saved.indexOf(a),ib=saved.indexOf(b); ia=ia<0?1e9:ia; ib=ib<0?1e9:ib; return ia-ib; });
+    lastModOrder=order.slice();
     el.innerHTML=order.map(k=>{
       const items=groups[k], wait=items.filter(sp=>specCat(sp)==='await').length, collapsed=collapsedModules.has(k);
       const ek=encodeURIComponent(k), nsel=items.filter(sp=>selSpecs.has(sp.id)).length;
@@ -493,7 +506,7 @@ function renderSpecs(){
         +`<button class="mini-btn2" ${nsel>=2?'':'disabled'} onclick="mergeSel('${ek}')" title="把勾选的合并成一条（≥2）"><i class="ti ti-arrows-join"></i> 合并${nsel>=2?'('+nsel+')':''}</button>`
         +`<button class="mini-btn2 danger" ${nsel>=1?'':'disabled'} onclick="delSel('${ek}')" title="删除勾选的（≥1）"><i class="ti ti-trash"></i> 删除${nsel>=1?'('+nsel+')':''}</button>`
         +`</span>`;
-      const head=`<div class="mgrp-h"><span class="mgrp-t" onclick="toggleModule('${ek}')"><i class="ti ti-chevron-${collapsed?'right':'down'}"></i><span class="mgrp-n">${k}</span><span class="mgrp-c">${items.length} 条${wait?` · <b style="color:var(--c-wn)">${wait} 待验收</b>`:''}</span></span>${acts}</div>`;
+      const head=`<div class="mgrp-h" ondragover="modDragOver(event)" ondragleave="modDragLeave(event)" ondrop="modDrop(event,'${ek}')"><span class="mgrp-drag" draggable="true" ondragstart="modDragStart(event,'${ek}')" ondragend="modDragLeave(event)" title="拖拽调整模块顺序"><i class="ti ti-grip-vertical"></i></span><span class="mgrp-t" onclick="toggleModule('${ek}')"><i class="ti ti-chevron-${collapsed?'right':'down'}"></i><span class="mgrp-n">${k}</span><span class="mgrp-c">${items.length} 条${wait?` · <b style="color:var(--c-wn)">${wait} 待验收</b>`:''}</span></span>${acts}</div>`;
       return `<div class="mgrp">${head}${collapsed?'':`<div class="mgrp-b">${items.map(specRowHtml).join('')}</div>`}</div>`;
     }).join('');
   }
