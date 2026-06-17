@@ -128,10 +128,15 @@ body.resizing #term-host iframe{pointer-events:none}
 /* 紧凑任务清单行（进度 + 验收合一）*/
 /* 按模块分组块 */
 .mgrp{margin-bottom:10px}
-.mgrp-h{display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--c-bg);border:1px solid var(--c-bd);border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--c-t2);user-select:none}
+.mgrp-h{display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--c-bg);border:1px solid var(--c-bd);border-radius:9px;font-size:13px;font-weight:600;color:var(--c-t2);user-select:none}
 .mgrp-h:hover{border-color:var(--c-bds)}
+.mgrp-h .mgrp-t{flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;min-width:0}
 .mgrp-h .mgrp-n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mgrp-h .mgrp-c{font-size:11px;font-weight:500;color:var(--c-t3);white-space:nowrap}
+.mgrp-acts{display:flex;gap:6px;flex-shrink:0}
+.mini-btn2:disabled{opacity:.4;cursor:not-allowed}
+.selck{width:15px;height:15px;accent-color:var(--c-pri);cursor:pointer;flex-shrink:0;margin:0}
+.trw.selrow{border-color:var(--c-pri-b);background:var(--c-pri-l)}
 .mgrp-b{padding:8px 0 1px}
 .gtgl{margin-left:auto;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--c-bd);background:#fff;color:var(--c-t2);cursor:pointer;user-select:none}.gtgl:hover{border-color:var(--c-bds)}.gtgl.on{background:var(--c-pri-l);border-color:var(--c-pri-b);color:var(--c-pri)}
 .trw{background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:9px 12px;margin-bottom:8px}
@@ -393,7 +398,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <div class="modal" id="merge-modal" onclick="if(event.target===this)closeMerge()">
   <div class="confirm-bd">
     <div class="confirm-t">合并 spec</div>
-    <div class="confirm-msg">把 <b id="merge-from"></b> 合并到下面选中的 spec —— 由 <b>AI 直接执行</b>：合并 AC/接口/数据契约、改向 depends_on、删除被合并的那条并重算看板。</div>
+    <div class="confirm-msg">勾选的 <b id="merge-from"></b> 合并成一条——下面选一个作<b>目标</b>，其余并入它。由 <b>AI 直接执行</b>：合并 AC/接口/数据契约、改向 depends_on、删除被并入的、重算看板。</div>
     <select id="merge-to" class="merge-sel"></select>
     <div id="merge-err" style="color:var(--c-dg);font-size:12px;min-height:15px;margin:7px 20px 0"></div>
     <div class="confirm-acts"><button class="abtn ghost" id="merge-cancel" onclick="closeMerge()">取消</button><button class="abtn" id="merge-ok" onclick="doMerge()">合并</button></div>
@@ -437,11 +442,16 @@ function specRowHtml(sp){
   const ops=`<div class="srow-ops" onclick="event.stopPropagation()">`
     +`<label class="opl">状态<select class="mini-sel" onchange="patchSpec('${sp.id}','status',this.value,this)">${stSel}</select></label>`
     +`<label class="opl">优先级<select class="mini-sel" onchange="patchSpec('${sp.id}','priority',this.value,this)">${prSel}</select></label>`
-    +`<button class="mini-btn2" onclick="mergeSpec('${sp.id}')"><i class="ti ti-arrows-join"></i> 合并到…</button>`
-    +`<button class="mini-btn2 danger" onclick="delSpec('${sp.id}','${title}')"><i class="ti ti-trash"></i> 删除</button>`
-    +`<span class="ophint">状态/优先级即时生效；合并·删除会去终端预填指令交 AI 处理（不直接删文件）</span>`
+    +`<span class="ophint">状态/优先级即时生效；删除·合并请勾选本行复选框后用上方模块栏的按钮</span>`
     +`</div>`;
-  return `<div class="trw ${wait?'await':''}" id="spec-row-${sp.id}"><div class="trw-h" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文"><span class="sid">${sp.id}</span><span class="att">${sp.title||''}</span><span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span><button class="row-edit" title="编辑（状态/优先级/合并/删除）" onclick="event.stopPropagation();toggleRowEdit('${sp.id}')"><i class="ti ti-pencil"></i></button></div>${ops}${acts}</div>`;
+  const sel=selSpecs.has(sp.id);
+  return `<div class="trw ${wait?'await':''} ${sel?'selrow':''}" id="spec-row-${sp.id}"><div class="trw-h">`
+    +`<input type="checkbox" class="selck" ${sel?'checked':''} onclick="event.stopPropagation();toggleSel('${sp.id}')" title="勾选以便删除/合并">`
+    +`<span class="sid" style="cursor:pointer" onclick="openSpec('${sp.id}')">${sp.id}</span>`
+    +`<span class="att" style="cursor:pointer" onclick="openSpec('${sp.id}')" title="点击查看 spec 全文">${sp.title||''}</span>`
+    +`<span class="mpipe">${dots}</span><span class="tag ${pr}">${sp.priority||''}</span><span class="${sb.cls}">${sb.label}</span>`
+    +`<button class="row-edit" title="编辑状态/优先级" onclick="event.stopPropagation();toggleRowEdit('${sp.id}')"><i class="ti ti-pencil"></i></button>`
+    +`</div>${ops}${acts}</div>`;
 }
 let pendingHighlight=null;
 function highlightSpec(id){ const el=document.getElementById('spec-row-'+id); if(!el)return false; el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1900); return true; }
@@ -463,7 +473,12 @@ function renderSpecs(){
     list.forEach(sp=>{ const k=(sp.module&&sp.module.trim())||'（未标模块）'; if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(sp); });
     el.innerHTML=order.map(k=>{
       const items=groups[k], wait=items.filter(sp=>specCat(sp)==='await').length, collapsed=collapsedModules.has(k);
-      const head=`<div class="mgrp-h" onclick="toggleModule('${encodeURIComponent(k)}')"><i class="ti ti-chevron-${collapsed?'right':'down'}"></i><span class="mgrp-n">${k}</span><span class="mgrp-c">${items.length} 条${wait?` · <b style="color:var(--c-wn)">${wait} 待验收</b>`:''}</span></div>`;
+      const ek=encodeURIComponent(k), nsel=items.filter(sp=>selSpecs.has(sp.id)).length;
+      const acts=`<span class="mgrp-acts" onclick="event.stopPropagation()">`
+        +`<button class="mini-btn2" ${nsel>=2?'':'disabled'} onclick="mergeSel('${ek}')" title="把勾选的合并成一条（≥2）"><i class="ti ti-arrows-join"></i> 合并${nsel>=2?'('+nsel+')':''}</button>`
+        +`<button class="mini-btn2 danger" ${nsel>=1?'':'disabled'} onclick="delSel('${ek}')" title="删除勾选的（≥1）"><i class="ti ti-trash"></i> 删除${nsel>=1?'('+nsel+')':''}</button>`
+        +`</span>`;
+      const head=`<div class="mgrp-h"><span class="mgrp-t" onclick="toggleModule('${ek}')"><i class="ti ti-chevron-${collapsed?'right':'down'}"></i><span class="mgrp-n">${k}</span><span class="mgrp-c">${items.length} 条${wait?` · <b style="color:var(--c-wn)">${wait} 待验收</b>`:''}</span></span>${acts}</div>`;
       return `<div class="mgrp">${head}${collapsed?'':`<div class="mgrp-b">${items.map(specRowHtml).join('')}</div>`}</div>`;
     }).join('');
   }
@@ -534,34 +549,42 @@ async function sendToTerm(text, enter){
   if(reused) fire(); else setTimeout(fire,900);   // 已有窗口立即发；新建窗口给 claude 一点启动时间
 }
 function prefillTerm(text){ sendToTerm(text,false); }
-function delSpec(spec,title){
-  uiConfirm('删除 spec 牵涉依赖/代码/测试，交给 AI 按 §4.6 处理更稳妥。点确定会切到终端、预填一条删除指令，你确认后回车执行——不会直接删文件。',()=>{
-    prefillTerm('请删除 spec '+spec+'（'+title+'）：先按 CLAUDE.md §4.6 算影响面（谁 depends_on 它、共享表/接口/同模块），列出受影响项给我确认后，再删 spec 文件与相关代码/测试，并更新受影响 spec。');
-  },{title:'删除 spec '+spec,okText:'去终端确认',danger:true});
+// —— 多选操作（模块栏「合并/删除」对勾选的 spec 生效）——
+let selSpecs=new Set(), mergeIds=[];
+function modKey(sp){ return (sp.module&&sp.module.trim())||'（未标模块）'; }
+function toggleSel(id){ if(selSpecs.has(id))selSpecs.delete(id); else selSpecs.add(id); renderSpecs(); }
+function specsInModule(ek){ const k=decodeURIComponent(ek); return (boardData&&boardData.specs||[]).filter(sp=>modKey(sp)===k && selSpecs.has(sp.id)).map(sp=>sp.id); }
+function delSel(ek){
+  const ids=specsInModule(ek); if(!ids.length)return;
+  uiConfirm('将删除选中的 '+ids.length+' 条 spec（'+ids.join('、')+'）。涉及依赖/代码/测试——点确定会切到终端预填删除指令、交 AI 按 §4.6 处理，你确认后回车执行，不直接删文件。',()=>{
+    prefillTerm('请删除这些 spec：'+ids.join('、')+'。先按 CLAUDE.md §4.6 算影响面（depends_on / 共享表接口 / 同模块），列出受影响项给我确认后，再删它们的 spec 文件与相关代码/测试，并更新受影响 spec。');
+    selSpecs.clear(); renderSpecs();
+  },{title:'删除 '+ids.length+' 条 spec',okText:'去终端确认',danger:true});
 }
-let mergeFrom='';
-function mergeSpec(spec){   // 选目标 → 后端直接调 LLM 合并（不走 CLI 窗口）
-  mergeFrom=spec;
-  const opts=(boardData&&boardData.specs||[]).filter(s=>s.id!==spec).map(s=>`<option value="${s.id}">${s.id} — ${(s.title||'').replace(/"/g,'')}</option>`).join('');
-  if(!opts){ toast('没有可合并的目标 spec'); return; }
-  document.getElementById('merge-from').textContent=spec;
+function mergeSel(ek){
+  const ids=specsInModule(ek); if(ids.length<2){ toast('合并至少勾选 2 条'); return; }
+  mergeIds=ids;
+  const opts=ids.map(id=>{const sp=(boardData.specs||[]).find(s=>s.id===id)||{};return `<option value="${id}">${id} — ${(sp.title||'').replace(/"/g,'')}</option>`;}).join('');
+  document.getElementById('merge-from').textContent=ids.join('、');
   document.getElementById('merge-to').innerHTML=opts;
   document.getElementById('merge-err').textContent='';
-  const ok=document.getElementById('merge-ok'); ok.disabled=false; ok.textContent='合并';
+  const ok=document.getElementById('merge-ok'),cancel=document.getElementById('merge-cancel'); ok.disabled=false; ok.textContent='合并'; cancel.textContent='取消'; cancel.setAttribute('onclick','closeMerge()');
   document.getElementById('merge-modal').classList.add('on');
 }
 function closeMerge(){ document.getElementById('merge-modal').classList.remove('on'); }
 async function doMerge(){
   const to=document.getElementById('merge-to').value, err=document.getElementById('merge-err');
   if(!to){ err.textContent='请选择目标 spec'; return; }
+  const froms=mergeIds.filter(id=>id!==to);
+  if(!froms.length){ err.textContent='目标不能是唯一选中项'; return; }
   const ok=document.getElementById('merge-ok'), cancel=document.getElementById('merge-cancel');
   ok.disabled=true; ok.textContent='AI 合并中…'; err.textContent='';
   cancel.textContent='停止'; cancel.setAttribute('onclick','stopMerge()');   // 跑起来后取消→停止（#8 可中止）
   const reset=()=>{ ok.disabled=false; ok.textContent='合并'; cancel.textContent='取消'; cancel.setAttribute('onclick','closeMerge()'); };
   try{
-    const r=await (await fetch('/api/spec-merge?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:mergeFrom,to})})).json();
+    const r=await (await fetch('/api/spec-merge?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:froms,to})})).json();
     if(!r.ok){ err.textContent='合并'+(/停止/.test(r.error||'')?'已停止':'失败：'+(r.error||'')); reset(); loadBoard(); return; }
-    reset(); closeMerge(); loadBoard(); toast('已合并 '+mergeFrom+' → '+to);
+    reset(); closeMerge(); selSpecs.clear(); loadBoard(); toast('已合并 '+froms.join('、')+' → '+to);
   }catch(e){ err.textContent='失败：'+e.message; reset(); }
 }
 async function stopMerge(){ try{ await fetch('/api/run-stop?project='+PROJECT,{method:'POST'}); toast('正在停止…'); }catch{} }
