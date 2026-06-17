@@ -235,6 +235,7 @@ body.resizing #term-host iframe{pointer-events:none}
 .amx{margin-left:auto;cursor:pointer;color:var(--c-t3);font-size:22px;line-height:1}
 .amsub{padding:8px 18px;font-size:12px;color:var(--c-t3);background:var(--c-bg);border-bottom:1px solid var(--c-bd)}
 .amtext{flex:1;border:none;outline:none;padding:16px 18px;font-family:var(--fe),Menlo,monospace;font-size:13px;line-height:1.7;resize:none;color:var(--c-t)}
+.amview{flex:1;overflow:auto;padding:14px 20px}
 .cmd-edit{float:right;font-size:11px;color:var(--c-t3);border:1px solid var(--c-bd);border-radius:5px;padding:1px 7px;margin-left:8px}.cmd-edit:hover{border-color:var(--c-pri);color:var(--c-pri)}
 .amf{padding:12px 18px;border-top:1px solid var(--c-bd);display:flex;justify-content:flex-end;gap:10px}
 .abtn{background:var(--c-pri);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;transition:filter .15s,box-shadow .15s}.abtn:disabled{opacity:.6}
@@ -374,8 +375,9 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="amodal">
     <div class="amh"><i class="ti ti-robot" style="margin-right:8px;color:var(--c-pri)"></i><span id="amtitle">编辑 agent</span><span class="amx" onclick="closeAgent()">&times;</span></div>
     <div class="amsub" id="amsub"></div>
-    <textarea class="amtext" id="amtext" spellcheck="false" placeholder="agent 的 .md（YAML frontmatter + 系统提示词）"></textarea>
-    <div class="amf"><button class="abtn ghost" onclick="closeAgent()">取消</button><button class="abtn" id="amsave" onclick="saveAgent()">保存</button></div>
+    <div class="amview md" id="amview"></div>
+    <textarea class="amtext" id="amtext" spellcheck="false" style="display:none" placeholder=".md 内容（markdown）"></textarea>
+    <div class="amf"><button class="abtn ghost" onclick="closeAgent()">关闭</button><button class="abtn ghost" id="amedit" onclick="amToggleEdit()"><i class="ti ti-pencil"></i> 编辑</button><button class="abtn" id="amsave" onclick="saveAgent()" style="display:none">保存</button></div>
   </div>
 </div>
 
@@ -961,7 +963,7 @@ async function editLessons(){   // Steward 全局经验库（~/.steward/lessons.
     document.getElementById('amtitle').textContent='Steward 全局经验库（跨项目共享）';
     document.getElementById('amsub').textContent=(r.path||'~/.steward/lessons.md')+'　·　所有受管项目的开发 agent 开工前都会读它避坑、收尾后回写';
     document.getElementById('amtext').value=r.content||'';
-    document.getElementById('amask').classList.add('on');
+    amOpen();
   }catch(e){ alert('读取失败：'+e.message); }
 }
 async function editAgent(id){
@@ -971,7 +973,7 @@ async function editAgent(id){
     document.getElementById('amtitle').textContent='编辑 agent · '+id;
     document.getElementById('amsub').textContent=(r.path||('.claude/agents/'+id+'.md'))+'　·　保存后下次该 agent 被调用即生效（当前所选项目）';
     document.getElementById('amtext').value=r.content||'';
-    document.getElementById('amask').classList.add('on');
+    amOpen();
   }catch(e){ alert('读取失败：'+e.message); }
 }
 async function editPrompt(kind,name,label){   // 查看/编辑命令提示词或 CLAUDE.md（复用 agent 弹窗）
@@ -984,10 +986,20 @@ async function editPrompt(kind,name,label){   // 查看/编辑命令提示词或
     document.getElementById('amtitle').textContent='编辑 · '+label;
     document.getElementById('amsub').textContent=(r.rel||'')+'　·　保存后对当前项目即时生效';
     document.getElementById('amtext').value=r.content||'';
-    document.getElementById('amask').classList.add('on');
+    amOpen();
   }catch(e){ alert('读取失败：'+e.message); }
 }
 function closeAgent(){ document.getElementById('amask').classList.remove('on'); }
+function amRender(){ const t=document.getElementById('amtext').value; document.getElementById('amview').innerHTML = window.marked ? marked.parse(t) : ('<pre>'+t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>'); }
+function amSetMode(edit){   // edit=false 渲染查看，true 文本框编辑
+  document.getElementById('amview').style.display = edit?'none':'';
+  document.getElementById('amtext').style.display = edit?'':'none';
+  document.getElementById('amedit').style.display = edit?'none':'';
+  document.getElementById('amsave').style.display = edit?'':'none';
+  if(!edit) amRender();
+}
+function amToggleEdit(){ amSetMode(true); }
+function amOpen(){ amSetMode(false); document.getElementById('amask').classList.add('on'); }   // 默认渲染查看
 async function saveAgent(){
   const btn=document.getElementById('amsave'); btn.disabled=true; btn.textContent='保存中…';
   try{
@@ -999,7 +1011,7 @@ async function saveAgent(){
     }else{
       await fetch('/api/agent-file?project='+PROJECT+'&id='+curAgent,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('amtext').value})});
     }
-    btn.textContent='已保存 ✓'; setTimeout(()=>{ btn.disabled=false; btn.textContent='保存'; closeAgent(); },700);
+    btn.textContent='已保存 ✓'; toast('已保存'); setTimeout(()=>{ btn.disabled=false; btn.textContent='保存'; amSetMode(false); },600);
   }catch(e){ btn.disabled=false; btn.textContent='保存'; alert('保存失败：'+e.message); }
 }
 
