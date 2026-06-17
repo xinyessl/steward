@@ -716,6 +716,7 @@ async function toggleCmds(){
     const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     pop.innerHTML='<div class="hpt">本项目命令 / 提示词（点命令名填入输入框；点「编辑」改提示词，对本项目即时生效）</div>'
       +'<div class="hrow" onclick="editPrompt(\'manual\',\'\',\'编排手册 CLAUDE.md\')"><div class="hp1"><b style="color:var(--c-pu)">✎ 编排手册 CLAUDE.md</b></div><div class="hp2" style="white-space:normal">项目方法论主文档（角色 / 护栏 / 纪律）——点开可看/改</div></div>'
+      +'<div class="hrow" onclick="editPrompt(\'lessons\',\'\',\'本项目经验库 docs/lessons.md\')"><div class="hp1"><b style="color:var(--c-pu)">✎ 本项目经验库 docs/lessons.md</b></div><div class="hp2" style="white-space:normal">本项目专属踩坑（通用的在顶栏「📖 经验库」=全局共享）</div></div>'
       +(cs.length?cs.map(c=>`<div class="hrow" onclick="useCmd('${c.name}')"><div class="hp1"><b style="color:var(--c-pri);font-family:var(--fe)">/${c.name}</b><span class="cmd-edit" onclick="event.stopPropagation();editPrompt('command','${c.name}','/${c.name}')">编辑</span></div><div class="hp2" style="white-space:normal">${esc(c.desc)}</div></div>`).join(''):'<div class="sst" style="padding:10px">该项目暂无命令</div>');
   }catch(e){ pop.innerHTML='<div class="hpt">命令</div><div class="sst" style="padding:10px">读取失败</div>'; }
 }

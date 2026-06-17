@@ -13,7 +13,7 @@
 - **多项目一处管**：所有项目（前端/后端/任意栈）注册进来，一个控制台切换、看进度、派活。
 - **导入存量项目自动建规约**：`/scan` 逆向扫描现有代码，按**功能模块**生成 `docs/specs/*.md` 基线（便宜模型、增量、标 `NEEDS-HUMAN`），让老项目也"有据可查"。
 - **spec 驱动开发**：新需求/改动先拆条 + **影响面分析**（改一处自动算波及哪些 spec）→ 改 spec → 实现 → 看板验收。
-- **解决过的问题，别再犯第二次**：每个和 AI 一起排掉的非显然坑（样式错位、筛选不生效、字段映射错…）都沉淀成一条教训，存在**跨项目共享的经验库**（`~/.steward/lessons.md`）。**每个**受管项目的开发 agent **开工前先读它避坑、收尾后回写新教训**——一个项目踩过的坑，其它项目都能避开。这是本系统很关键的一块价值。
+- **解决过的问题，别再犯第二次**——**两层经验库**：每个非显然坑都沉淀成一条教训、按范围分流。**项目专属**（特定样式、主题色、本项目字段怪癖）进该项目的 `docs/lessons.md`；**通用**（分页是否生效、搜索/筛选交互是否统一…）进 Steward 的**全局** `lessons.md`（随工具提交、跨所有项目和使用者共享）。开发 agent **每次开工前两层都读、收尾后回写**——坑不再复发，本项目内不再犯，所有用 steward 的人也不再犯。这是本系统很关键的一块价值。
 - **内嵌终端**：每个项目可开多个 claude 对话窗口（ttyd + tmux 持久化，刷新/重连不丢），三色状态实时显示在干活/待确认/空闲。
 - **工具与数据隔离**：工具本体不含任何项目数据；项目注册表在 `~/.steward/`，各项目产物在各自目录——更新工具不碰你的数据。
 
@@ -80,7 +80,7 @@ bash tools/start.sh          # → http://127.0.0.1:5178
 | `/build <id>` | 按 spec 实现一个功能（开发 agent：实现 + 测试 + 真库冒烟） |
 | `/fix <缺陷/需求>` | 缺陷/改动闭环（拆条 + 影响面 → 改 spec/测试 → 改码 → 回归） |
 | `/accept <id>` | 验收闭环（出验收材料 + spec diff 确认；打回则自动驱动修复） |
-| `/lesson [现象]` | 把刚解决的坑沉淀进全局经验库（`~/.steward/lessons.md`，跨项目共享） |
+| `/lesson [现象]` | 把刚解决的坑沉淀进经验库，自动分流（项目专属→`docs/lessons.md`；通用→全局共享） |
 | `/autopilot [范围]` | 自动驾驶：跨模块并行，把功能逐条做到待验收 |
 
 ---
@@ -106,7 +106,7 @@ steward/                     # 工具本体（可分享，不含项目数据）
 ```
 
 ### 该提交什么（项目侧）
-- **提交**：`docs/specs/*`（源头，含 status）、`docs/changes`、`docs/reviews`、`CLAUDE.md`、`.claude/agents`+`commands`、`tools/board.mjs`。（经验库在 `~/.steward/lessons.md`，全局/按用户，不随项目提交。）
+- **提交**：`docs/specs/*`（源头，含 status）、`docs/lessons.md`（本项目踩坑）、`docs/changes`、`docs/reviews`、`CLAUDE.md`、`.claude/agents`+`commands`、`tools/board.mjs`。（**全局**经验库是 Steward 仓库里的 `lessons.md`，随工具提交。）
 - **不提交**（自动生成 / 运行态 / 本地）：`docs/board.json`、`docs/board.md`、`docs/tasks.json`、`docs/.state/`、`.claude/plan.md`、`.claude/settings.local.json`。
   > 新导入的项目会自带 `docs/.gitignore` / `.claude/.gitignore`，自动处理好这条边界。
 

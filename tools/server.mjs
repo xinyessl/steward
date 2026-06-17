@@ -25,7 +25,7 @@ const SELF_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PO
 // 用户数据目录（与工具本体隔离，像 VSCode）：项目注册表存这里，工具目录保持干净/可分享。可用 STEWARD_DATA 覆盖。
 const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
-const LESSONS_FILE = path.join(DATA_DIR, 'lessons.md');   // Steward 全局经验库（跨所有受管项目共享，与工具隔离）
+const LESSONS_FILE = path.join(ROOT, 'lessons.md');   // Steward 经验库：放工具仓库根、提交进 git，随 steward 沉淀+共享（跨项目、跨人）
 try {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(PROJECTS_FILE)) {   // 首次运行：从旧位置 tools/projects.json 迁移注册表，否则建空表
@@ -270,6 +270,7 @@ function scaffoldProject(dest, name, id) {
   fillPlaceholders(path.join(dest, 'CLAUDE.md'), { '{{PROJECT_NAME}}': name || '', '{{PROJECT_ID}}': id || '' });
   copyMdDir(path.join(T, '.claude/agents'), path.join(dest, '.claude/agents'));
   copyMdDir(path.join(T, '.claude/commands'), path.join(dest, '.claude/commands'));
+  copyIfAbsent(path.join(T, 'docs/lessons.md'), path.join(dest, 'docs/lessons.md'));   // 项目级经验库（项目专属坑，随项目提交）
   copyIfAbsent(path.join(T, 'docs/specs/_TEMPLATE.md'), path.join(dest, 'docs/specs/_TEMPLATE.md'));
   copyIfAbsent(path.join(T, 'docs/specs/README.md'), path.join(dest, 'docs/specs/README.md'));
   copyIfAbsent(path.join(T, 'tools/board.mjs'), path.join(dest, 'tools/board.mjs'));
@@ -666,6 +667,7 @@ const server = http.createServer((req, res) => {
     if (kind === 'command' && name) rel = '.claude/commands/' + name + '.md';
     else if (kind === 'agent' && name) rel = '.claude/agents/' + name + '.md';
     else if (kind === 'manual') rel = 'CLAUDE.md';
+    else if (kind === 'lessons') rel = 'docs/lessons.md';   // 项目级经验库
     else return send(res, 400, JSON.stringify({ error: '参数错误' }));
     const f = path.join(p.path, rel);
     if (req.method === 'GET') return send(res, 200, JSON.stringify({ rel, content: fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '' }));

@@ -13,7 +13,7 @@ Zero third-party dependencies (one Node script runs the server), a single-page c
 - **One place for many projects**: register any project (frontend / backend / any stack), then switch, track progress, and dispatch work from a single console.
 - **Auto-generate specs for existing projects**: `/scan` reverse-reads your current code and builds a `docs/specs/*.md` baseline **by feature module** (cheap model, incremental, flags `NEEDS-HUMAN`), so legacy projects become "documented and traceable" too.
 - **Spec-driven development**: new requirements/changes are first broken down + run through **impact analysis** (touch one thing → auto-find which specs are affected) → edit spec → implement → accept on the board.
-- **Solve it once, never again**: every non-obvious problem you fix together with the AI (a style glitch, a filter that doesn't apply, a wrong field mapping…) is distilled into a lesson in a **shared, cross-project knowledge base** (`~/.steward/lessons.md`). The dev agent of **every** managed project **reads it before each task** to avoid repeating past mistakes and **writes a new lesson after** solving one — a pitfall hit in one project is avoided in all the others.
+- **Solve it once, never again** — a **two-tier lessons base**: every non-obvious problem you fix is distilled into a lesson, routed by scope. **Project-specific** pitfalls (a particular style, theme color, this project's field quirks) go to the project's own `docs/lessons.md`; **general** ones (does pagination work, is search/filter UX consistent…) go to Steward's **global** `lessons.md` (committed with the tool, shared across all projects and users). The dev agent **reads both before each task** and **writes a new lesson after** solving one — pitfalls stop recurring, across the project and across everyone who uses Steward.
 - **Embedded terminal**: open multiple claude windows per project (persisted via ttyd + tmux, survives refresh/reconnect), with a live tri-color status: working / needs-confirmation / idle.
 - **Tool/data isolation**: the tool itself holds no project data; the project registry lives in `~/.steward/`, each project's artifacts stay in its own directory — updating the tool never touches your data.
 
@@ -80,7 +80,7 @@ bash tools/start.sh          # → http://127.0.0.1:5178
 | `/build <id>` | Implement one feature per spec (dev agent: implement + test + real-DB smoke) |
 | `/fix <bug/change>` | Close the loop on a bug/change (breakdown + impact → edit spec/test → edit code → regress) |
 | `/accept <id>` | Acceptance loop (produce acceptance materials + spec-diff confirmation; rejection auto-drives the fix) |
-| `/lesson [pitfall]` | Distill a just-solved pitfall into the shared lessons base (`~/.steward/lessons.md`, cross-project) |
+| `/lesson [pitfall]` | Distill a just-solved pitfall into the lessons base, auto-routed (project-specific → `docs/lessons.md`; general → global) |
 | `/autopilot [scope]` | Autopilot: parallelize across modules, drive each feature to "pending acceptance" |
 
 ---
@@ -106,7 +106,7 @@ steward/                     # the tool itself (shareable, contains no project d
 ```
 
 ### What to commit (project side)
-- **Commit**: `docs/specs/*` (the source, incl. status), `docs/changes`, `docs/reviews`, `CLAUDE.md`, `.claude/agents`+`commands`, `tools/board.mjs`. (The lessons base lives in `~/.steward/lessons.md` — global/per-user, not committed per project.)
+- **Commit**: `docs/specs/*` (the source, incl. status), `docs/lessons.md` (this project's pitfalls), `docs/changes`, `docs/reviews`, `CLAUDE.md`, `.claude/agents`+`commands`, `tools/board.mjs`. (The **global** lessons base is `lessons.md` in the Steward repo, committed with the tool.)
 - **Don't commit** (generated / runtime / local): `docs/board.json`, `docs/board.md`, `docs/tasks.json`, `docs/.state/`, `.claude/plan.md`, `.claude/settings.local.json`.
   > Newly imported projects ship with `docs/.gitignore` / `.claude/.gitignore` that enforce this boundary automatically.
 
