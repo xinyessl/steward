@@ -167,15 +167,13 @@ body.resizing #term-host iframe{pointer-events:none}
 .trw.editing .row-edit{border-color:var(--c-pri);color:var(--c-pri);background:var(--c-pri-l)}
 /* AI 团队状态条（4 角色）*/
 .team{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.team .agent{min-width:220px}
-/* #13 待你处理 行动条：置顶 sticky，按事项类型上色，点条目定位 */
-.action-bar{position:sticky;top:0;z-index:6;background:var(--c-wn-l);border:1px solid #EAD4A6;border-radius:11px;padding:9px 11px;margin-bottom:14px;box-shadow:0 2px 8px rgba(31,39,51,.05)}
-.action-bar .ab-h{font-size:12.5px;font-weight:700;color:var(--c-wn);display:flex;align-items:center;gap:6px;margin-bottom:7px}
-.action-bar .ab-h b{font-family:var(--fe)}
-.ab-item{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-left:3px solid var(--c-wn);border-radius:8px;padding:7px 10px;cursor:pointer;margin-top:6px;transition:.12s}
-.ab-item:first-of-type{margin-top:0}
-.ab-item:hover{border-color:var(--c-bds);transform:translateX(2px)}
-.ab-item .ab-l{font-size:12px;font-weight:600;flex-shrink:0}
-.ab-item .ab-t{font-size:12px;color:var(--c-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* #13 待你处理 行动条：紧凑一行，按类型聚合成 chip，点 chip 跳到该类第一条（明细看下方清单/右上铃铛） */
+.action-bar{background:var(--c-wn-l);border:1px solid #EAD4A6;border-radius:11px;padding:8px 11px;margin-bottom:14px}
+.action-bar .ab-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--c-wn)}
+.action-bar .ab-ht{display:inline-flex;align-items:center;gap:6px}
+.action-bar .ab-ht b{font-family:var(--fe)}
+.ab-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--abc);background:#fff;border:1px solid var(--c-bd);border-left:3px solid var(--abc);border-radius:999px;padding:4px 11px;cursor:pointer;transition:.12s}
+.ab-chip:hover{border-color:var(--abc);box-shadow:0 1px 4px rgba(31,39,51,.08)}
 .agent{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:8px 10px;position:relative;min-width:0;cursor:pointer}
 .agent:hover{border-color:var(--c-pri-b)}.agent.running{border-color:var(--c-pri-b);background:var(--c-pri-l)}
 .aic{width:30px;height:30px;border-radius:8px;background:var(--c-bg);color:var(--c-t2);display:grid;place-items:center;font-size:16px;flex-shrink:0}
@@ -1153,16 +1151,20 @@ function gotoItem(pid, spec, kind){   // 切到该项目 → 筛到对应类别 
   selectProject(pid);
   if(spec){ if(kind==='accept')specFilter='await'; collapsedModules.clear(); pendingHighlight=spec; renderSpecs(); }
 }
-// #13 左栏「待你处理」行动条：只列当前项目待办，按类型上色，点条目定位；为 0 时整条收起
-const ABKIND={accept:{c:'var(--c-ok)',i:'ti-checks'},fail:{c:'var(--c-dg)',i:'ti-alert-triangle'},stuck:{c:'var(--c-wn)',i:'ti-clock-exclamation'},decision:{c:'var(--c-wn)',i:'ti-help-circle'}};
+// #13 左栏「待你处理」行动条：紧凑——按类型聚合成 chip，点 chip 跳到该类第一条；明细看下方清单/右上铃铛；为 0 时整条收起
+const ABKIND={accept:{c:'var(--c-ok)',i:'ti-checks',cn:'待验收'},fail:{c:'var(--c-dg)',i:'ti-alert-triangle',cn:'需介入'},stuck:{c:'var(--c-wn)',i:'ti-clock-exclamation',cn:'疑似卡住'},decision:{c:'var(--c-wn)',i:'ti-help-circle',cn:'需决策'}};
+const ABORDER=['accept','fail','stuck','decision'];
 function renderActionBar(items){
   const bar=document.getElementById('action-bar'); if(!bar)return;
   const mine=(items||[]).filter(it=>it.project===PROJECT);
   if(!mine.length){ bar.style.display='none'; bar.innerHTML=''; return; }
   bar.style.display='block';
-  bar.innerHTML=`<div class="ab-h"><i class="ti ti-hand-stop"></i> 待你处理 <b>${mine.length}</b> 项</div>`
-    + mine.map(it=>{const k=ABKIND[it.kind]||{c:'var(--c-wn)',i:'ti-point'};
-        return `<div class="ab-item" style="border-left-color:${k.c}" onclick="gotoItem('${jss(it.project)}','${jss(it.spec)}','${jss(it.kind)}')" title="${esc(it.label+' · '+(it.spec?it.spec+' ':'')+it.title)}"><i class="ti ${k.i}" style="color:${k.c}"></i><span class="ab-l" style="color:${k.c}">${esc(it.label)}</span><span class="ab-t">${esc((it.spec?it.spec+' ':'')+it.title)}</span></div>`;}).join('');
+  const groups={}; mine.forEach(it=>{(groups[it.kind]=groups[it.kind]||[]).push(it);});
+  const chips=Object.keys(groups).sort((a,b)=>ABORDER.indexOf(a)-ABORDER.indexOf(b)).map(kd=>{
+    const k=ABKIND[kd]||{c:'var(--c-wn)',i:'ti-point',cn:kd}, g=groups[kd], f=g[0];
+    return `<span class="ab-chip" style="--abc:${k.c}" onclick="gotoItem('${jss(f.project)}','${jss(f.spec)}','${jss(kd)}')" title="${esc(k.cn)}：共 ${g.length} 项，点击定位第一条（明细见下方清单或右上 🔔）"><i class="ti ${k.i}"></i> ${g.length} ${esc(k.cn)}</span>`;
+  }).join('');
+  bar.innerHTML=`<div class="ab-h"><span class="ab-ht"><i class="ti ti-hand-stop"></i> 待你处理 <b>${mine.length}</b> 项</span>${chips}</div>`;
 }
 
 
