@@ -199,6 +199,9 @@ body.resizing #term-host iframe{pointer-events:none}
 .md-chev{display:inline-block;width:1em;font-size:11px;color:var(--c-t3);transition:transform .15s}
 .md-sec.collapsed .md-chev{transform:rotate(-90deg)}
 .md-sec.collapsed .md-sec-b{display:none}
+.ov-head{cursor:pointer;user-select:none}#ov-chev{transition:transform .15s}
+.ov-head.collapsed #ov-chev{transform:rotate(-90deg)}
+#ov-wrap.collapsed{display:none}
 .fmtab{border-collapse:collapse;margin:0 0 16px;font-size:12.5px;width:100%}
 .fmtab td{border:1px solid var(--c-bd);padding:4px 11px;vertical-align:top}
 .fmtab .fk{background:var(--c-bg);font-weight:600;color:var(--c-t2);white-space:nowrap;width:1%;font-family:var(--fe)}
@@ -301,10 +304,12 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="team" id="team"></div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
-      <div class="kpis" id="kpis"></div>
-      <div id="blk"></div>
-      <div class="sec"><i class="ti ti-layout-dashboard"></i> 全局总览（按优先级里程碑）</div>
-      <div class="card" id="overview"></div>
+      <div class="sec ov-head" onclick="toggleOverview()" title="折叠/展开概览"><i class="ti ti-chevron-down" id="ov-chev"></i> 概览 · spec 统计 / 优先级进度</div>
+      <div id="ov-wrap">
+        <div class="kpis" id="kpis"></div>
+        <div id="blk"></div>
+        <div class="card" id="overview" style="margin-top:6px"></div>
+      </div>
       <div class="sec"><i class="ti ti-list-check"></i> 任务清单（进度 / 验收 · 待验收可直接通过或打回）</div>
       <div class="fbar" id="spec-filter"></div>
       <div id="specs"></div>
@@ -1119,8 +1124,10 @@ try{
     }
   };
 }catch(e){}
+function toggleOverview(){ const w=document.getElementById('ov-wrap'),h=document.querySelector('.ov-head'),c=!w.classList.contains('collapsed'); w.classList.toggle('collapsed',c); h.classList.toggle('collapsed',c); try{localStorage.setItem('ovCollapsed',c?'1':'0');}catch{} }
+function applyOverviewState(){ let c=false; try{c=localStorage.getItem('ovCollapsed')==='1';}catch{} document.getElementById('ov-wrap').classList.toggle('collapsed',c); document.querySelector('.ov-head').classList.toggle('collapsed',c); }
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
-loadHealth();
+loadHealth(); applyOverviewState();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
 // 弹窗外部点击即关闭：历史对话 / 通知铃铛
 document.addEventListener('click',e=>{
