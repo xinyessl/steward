@@ -720,6 +720,7 @@ async function loadTerminal(){
 function addWindowDom(key,port,label){
   const host=document.getElementById('term-host');
   const fr=document.createElement('iframe'); fr.dataset.key=key; fr.src='http://127.0.0.1:'+port+'/'; fr.style.display='none';
+  fr.allow='clipboard-write; clipboard-read';   // ttyd 跑在不同端口=跨源 iframe，不授权剪贴板的话 xterm.js 的 ⌘C 会被 Permissions-Policy 静默挡掉（选得中却拷不进）
   host.appendChild(fr);
   windows.push({key,port,label}); renderTabs(); activate(windows.length-1);
 }

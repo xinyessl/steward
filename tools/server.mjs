@@ -84,6 +84,10 @@ if (TMUX_BIN) { try { fs.writeFileSync(TMUX_CONF, [
   'set -sg escape-time 0',        // 无 ESC 延迟，TUI 跟手
   'set -g history-limit 50000',   // 滚动历史
   'set -g mouse on',              // 开鼠标：滚轮翻历史（claude 用普通屏，靠 tmux copy-mode 才能滚）；滚到底自动退出查看模式，回到实时可继续打字/选择
+  'set -g set-clipboard on',      // 复制时用 OSC52 转义直写终端剪贴板 → ttyd(xterm.js) 落进浏览器系统剪贴板（配合 iframe allow=clipboard-write）
+  // 鼠标拖拽选中、松手即复制到系统剪贴板并退出 copy-mode（含在 copy-mode 里滚历史后跨屏选的整段）；双击选词/三击选行用 tmux 自带绑定（配 set-clipboard 即复制）
+  'bind -T copy-mode    MouseDragEnd1Pane send -X copy-selection-and-cancel',
+  'bind -T copy-mode-vi MouseDragEnd1Pane send -X copy-selection-and-cancel',
   'bind -T copy-mode    q send -X cancel',   // 查看模式按 q 退出
   'bind -T copy-mode-vi q send -X cancel',
   'set -g destroy-unattached off' // 无客户端时会话保留（刷新后还能 reattach）
