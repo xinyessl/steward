@@ -52,10 +52,12 @@ function waitForPort(port, cb, tries = 50) {
 const CLAUDE_EXTRA = (process.env.CLAUDE_EXTRA || '').split(' ').filter(Boolean);
 // 起子 claude 前剔除从控制台进程继承来的会话身份变量。否则若控制台是从某个 claude 会话里启动的，
 // 子 claude 会被当成"子会话"(CHILD_SESSION) → 不落地成可恢复会话 → 进不了「历史对话」。
-function childEnv() {
+function childEnv(projectId) {
   const e = { ...process.env };
   for (const k of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH']) delete e[k];
   e.STEWARD_LESSONS = LESSONS_FILE;   // 让子 claude 知道 Steward 全局经验库在哪（兼容 STEWARD_DATA 覆盖）
+  e.STEWARD_DATA = DATA_DIR;          // 让子进程脚本（如 feishu-fetch）找到 ~/.steward 数据目录
+  if (projectId) e.STEWARD_PROJECT_ID = projectId;   // 当前终端属于哪个项目 → /intake 用对应项目的飞书机器人
   return e;
 }
 // 内嵌终端：每项目一个 ttyd（按 projects.json 顺序分配端口）
@@ -110,7 +112,7 @@ function openWindow(proj, sessionId, label) {
     cmd = [TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', tmuxSess, ...claudeArgs];
   }
   const args = ['-W', '-i', '127.0.0.1', '-p', String(port), ...cmd];
-  const proc = spawn(TTYD_BIN, args, { cwd: proj.path, stdio: 'ignore', env: childEnv() });
+  const proc = spawn(TTYD_BIN, args, { cwd: proj.path, stdio: 'ignore', env: childEnv(proj.id) });
   proc.on('error', e => console.error('[ttyd spawn]', e?.message || e));   // spawn 失败不可掀翻进程
   const key = String(port);
   openWindows.set(key, { key, port, projectId: proj.id, sessionId: sessionId || '', label: label || '新对话', proc, tmuxSess });
@@ -142,7 +144,7 @@ function adoptWindows() {
     let proc = null;
     if (!portBound(port)) {  // ttyd 没了 → 重起一个接回（new-session -A 已存在=attach，claude 不重启）
       const args = ['-W', '-i', '127.0.0.1', '-p', String(port), TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', sess];
-      try { proc = spawn(TTYD_BIN, args, { cwd: (projById(projectId) || {}).path || ROOT, stdio: 'ignore', env: childEnv() }); proc.on('error', e => console.error('[ttyd adopt]', e?.message || e)); } catch {}
+      try { proc = spawn(TTYD_BIN, args, { cwd: (projById(projectId) || {}).path || ROOT, stdio: 'ignore', env: childEnv(projectId) }); proc.on('error', e => console.error('[ttyd adopt]', e?.message || e)); } catch {}
     } // else：ttyd 还在（被 SIGKILL 残留）→ 直接认领，浏览器 iframe 不断连，无缝
     openWindows.set(String(port), { key: String(port), port, projectId, sessionId: m.sessionId || '', label: m.label || '恢复的对话', proc, tmuxSess: sess });
   }
@@ -293,6 +295,10 @@ function loadProjects() {
   try { return JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')).projects || []; }
   catch { return []; }   // 空工具：还没纳管任何项目
 }
+// 飞书机器人凭据：按项目隔离，存用户数据目录(不入任何仓库)。{ "<projectId>": {appId, appSecret, domain?} }
+const FEISHU_FILE = path.join(DATA_DIR, 'feishu.json');
+function loadFeishu() { try { return JSON.parse(fs.readFileSync(FEISHU_FILE, 'utf8')) || {}; } catch { return {}; } }
+function saveFeishu(map) { try { fs.writeFileSync(FEISHU_FILE, JSON.stringify(map, null, 2)); return true; } catch { return false; } }
 function projById(id) { const ps = loadProjects(); return ps.find(p => p.id === id) || null; }   // #16：未知/缺失 id 返回 null（不再兜底到第一个项目），避免写操作静默落到错误项目
 function genBoard(projPath) { const bm = path.join(projPath, 'tools/board.mjs'); if (fs.existsSync(bm)) { try { spawnSync('node', [bm], { cwd: projPath }); } catch {} } }   // 同步：避免与连接 body 读取并发 spawn 的 fd 竞态
 function send(res, code, body, type = 'application/json') { res.writeHead(code, { 'Content-Type': type }); res.end(body); }
@@ -382,6 +388,25 @@ const server = http.createServer((req, res) => {
       j.items = items;
       try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
       send(res, 200, JSON.stringify({ ok: true, items }));
+    });
+    return;
+  }
+  if (url.pathname === '/api/feishu-config') {   // 读某项目飞书配置（不回明文 secret，只回是否已配 + appId/domain）
+    const m = loadFeishu(), c = m[pid] || {};
+    return send(res, 200, JSON.stringify({ appId: c.appId || '', domain: c.domain || '', hasSecret: !!c.appSecret }));
+  }
+  if (url.pathname === '/api/feishu-config-save' && req.method === 'POST') {   // 存某项目飞书机器人凭据（按项目隔离·不入库）
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const id = String(b.project || '').trim(); if (!id) return send(res, 400, JSON.stringify({ ok: false, error: '缺少项目' }));
+      const m = loadFeishu(); const cur = m[id] || {};
+      const appId = String(b.appId || '').trim();
+      const domain = String(b.domain || cur.domain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      let appSecret = '';
+      if (!appId) { delete m[id]; }                                   // appId 留空 = 清除该项目配置
+      else { appSecret = (b.appSecret == null || b.appSecret === '') ? (cur.appSecret || '') : String(b.appSecret).trim(); m[id] = { appId, appSecret, domain }; }   // secret 留空=保留原值（编辑场景）
+      const ok = saveFeishu(m);
+      send(res, ok ? 200 : 500, JSON.stringify({ ok, appId, domain, hasSecret: !!appSecret }));
     });
     return;
   }
@@ -673,6 +698,7 @@ const server = http.createServer((req, res) => {
       j.projects = j.projects.filter(p => p.id !== id);
       if (j.projects.length === before) return send(res, 400, JSON.stringify({ error: '项目不存在' }));
       try { fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ error: e.message })); }
+      try { const fm = loadFeishu(); if (fm[id]) { delete fm[id]; saveFeishu(fm); } } catch {}   // 一并清掉该项目的飞书凭据
       for (const w of [...openWindows.values()]) if (w.projectId === id) closeWindow(w.key);   // 杀该项目的 ttyd + tmux
       unwatchProject(id);
       sseBroadcast({ type: 'refresh' });
