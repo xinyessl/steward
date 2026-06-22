@@ -40,16 +40,27 @@ sudo apt install -y ttyd      # Ubuntu 22.04+ 自带；旧版没有就从 ttyd r
 ```
 
 ### Windows
-本工具依赖 `ttyd` / `tmux` / `lsof` / `pkill` 等类 Unix 组件，**Windows 原生不支持**。请走 **WSL2**（Windows Subsystem for Linux）：
+本工具依赖 `ttyd` / `tmux` / `lsof` / `pkill` 等类 Unix 组件，**Windows 原生不支持**（PowerShell/CMD 里没有 tmux 可装——这就是"tmux 下载不了"的常见原因）。请走 **WSL2**（Windows Subsystem for Linux），在 WSL 里装：
 
 1. 安装 WSL2 + 发行版（管理员 PowerShell）：`wsl --install -d Ubuntu`，重启后进入 Ubuntu。
-2. **在 WSL 里**装依赖：
+2. **在 WSL 里**装依赖（注意：是在 Ubuntu 终端里，不是 PowerShell）：
    ```bash
    sudo apt update && sudo apt install -y nodejs npm tmux ttyd
    # claude CLI 也装在 WSL 内（按官方说明）
    ```
 3. **把仓库 clone 在 WSL 的 Linux 文件系统里**（如 `~/steward`），**别放在 `/mnt/c/...`**——`fs.watch` 在跨盘挂载点不可靠，看板不会自动刷新。
 4. 在 WSL 里 `bash tools/start.sh`，然后用 **Windows 浏览器**打开 http://127.0.0.1:5178（WSL2 自动转发 localhost）。
+
+> **tmux 是可选的**：装不上也能用——控制台照常跑，只是失去「刷新页面后回放终端整屏」「窗口忙/待确认状态灯」「滚动选择复制」这几个增强。所以别被它卡住。
+>
+> **WSL 里 `apt install tmux` 还是下不动？** 多半是 apt 源/网络问题，按需试：
+> ```bash
+> sudo apt update                      # 先更新索引，最常见的遗漏
+> # 仍失败 → 换国内镜像源(清华/阿里)后再 apt update && apt install -y tmux
+> # 实在装不了 tmux → 先跳过它(只装 ttyd 即可启动)，或用静态二进制：
+> #   到 https://github.com/tmux/tmux 自行编译，或找 tmux 静态构建放进 PATH
+> ```
+> `ttyd` 同理：Ubuntu 22.04+ 自带，旧版从 [ttyd releases](https://github.com/tsl0922/ttyd/releases) 下静态二进制丢进 `/usr/local/bin`。
 
 ## 启动
 

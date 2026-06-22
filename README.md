@@ -40,16 +40,26 @@ sudo apt install -y ttyd      # available on Ubuntu 22.04+; on older releases gr
 ```
 
 ### Windows
-This tool relies on Unix-style components (`ttyd` / `tmux` / `lsof` / `pkill`), so it is **not supported on native Windows**. Use **WSL2** (Windows Subsystem for Linux):
+This tool relies on Unix-style components (`ttyd` / `tmux` / `lsof` / `pkill`), so it is **not supported on native Windows** (there is no tmux to install under PowerShell/CMD — that's the usual "can't download tmux" cause). Use **WSL2** (Windows Subsystem for Linux) and install everything inside WSL:
 
 1. Install WSL2 + a distro (admin PowerShell): `wsl --install -d Ubuntu`, then reboot and open Ubuntu.
-2. **Inside WSL**, install the dependencies:
+2. **Inside WSL** (the Ubuntu terminal, not PowerShell), install the dependencies:
    ```bash
    sudo apt update && sudo apt install -y nodejs npm tmux ttyd
    # install the claude CLI inside WSL too (per its official instructions)
    ```
 3. **Clone the repo into the WSL Linux filesystem** (e.g. `~/steward`), **not under `/mnt/c/...`** — `fs.watch` is unreliable across the Windows mount, so the board won't auto-refresh there.
 4. Run `bash tools/start.sh` inside WSL, then open http://127.0.0.1:5178 in your **Windows browser** (WSL2 forwards localhost automatically).
+
+> **tmux is optional**: if you can't install it, the console still runs — you only lose "replay the full terminal screen after a refresh", the busy/needs-confirmation status lights, and drag-to-copy. So don't let it block you.
+>
+> **`apt install tmux` still won't download inside WSL?** Usually an apt index/mirror/network issue:
+> ```bash
+> sudo apt update                      # refresh the index first — the most common miss
+> # still failing → switch to a closer apt mirror, then apt update && apt install -y tmux
+> # truly can't get tmux → skip it (ttyd alone is enough to start), or drop in a static tmux build on your PATH
+> ```
+> Same for `ttyd`: bundled on Ubuntu 22.04+; on older releases grab a static binary from [ttyd releases](https://github.com/tsl0922/ttyd/releases) and put it in `/usr/local/bin`.
 
 ## Run
 
