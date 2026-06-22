@@ -368,6 +368,23 @@ const server = http.createServer((req, res) => {
     return finish();
   }
   if (url.pathname === '/api/tasks') { const p = projById(pid); return send(res, 200, p ? readOr(path.join(p.path, 'docs/tasks.json'), '{"groups":[]}') : '{"groups":[]}'); }
+  if (url.pathname === '/api/todos' && req.method === 'POST') {   // v1 速记小任务：整存 items 到 docs/tasks.json(本地·不入库)，保留旧 groups 字段
+    const p = projById(pid); if (!p) return send(res, 400, JSON.stringify({ ok: false, error: '项目不存在' }));
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const items = (Array.isArray(b.items) ? b.items : []).slice(0, 500).map(it => ({
+        id: (String(it.id || '').slice(0, 40)) || ('t' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36)),
+        text: String(it.text || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+        done: !!it.done, pri: !!it.pri, ts: Number(it.ts) || Date.now()
+      })).filter(it => it.text);
+      const f = path.join(p.path, 'docs/tasks.json');
+      let j = {}; try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { j = { title: '开发清单', groups: [] }; }
+      j.items = items;
+      try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
+      send(res, 200, JSON.stringify({ ok: true, items }));
+    });
+    return;
+  }
   if (url.pathname === '/api/spec') {
     const p = projById(pid), id = (url.searchParams.get('id') || '').trim();
     if (!p) return send(res, 404, JSON.stringify({ error: '项目不存在' }));
