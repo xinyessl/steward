@@ -169,18 +169,16 @@ body.resizing #term-host iframe{pointer-events:none}
 .trw.editing .row-edit{border-color:var(--c-pri);color:var(--c-pri);background:var(--c-pri-l)}
 /* AI 团队状态条（4 角色）*/
 .team{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.team .agent{min-width:220px}
-/* v1 速记小任务面板：项目级 · 本地不入库 · 与 spec 完全隔离 */
-.todobox{background:#fff;border:1px solid var(--c-bd);border-radius:11px;padding:10px 12px;margin-bottom:14px}
-.todo-h{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--c-t2);cursor:pointer;user-select:none}
-.todo-h .todo-cnt{background:var(--c-pri);color:#fff;border-radius:9px;font-size:10px;font-weight:700;min-width:16px;height:16px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe)}
-.todo-h .todo-hint{margin-left:auto;font-size:10.5px;font-weight:400;color:var(--c-t3)}
-.todo-h .todo-chev{transition:transform .15s;color:var(--c-t3);margin-left:7px}
-.todobox.collapsed .todo-chev{transform:rotate(-90deg)}
-.todobox.collapsed .todo-add,.todobox.collapsed .todo-list{display:none}
+/* v1 速记小任务：右上角入口 + 弹层 · 项目级 · 本地不入库 · 与 spec 完全隔离 */
+.rf-badge{background:var(--c-pri);color:#fff;border-radius:9px;font-size:10px;font-weight:700;min-width:16px;height:16px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe);margin-left:2px}
+.todo-pop{position:absolute;right:14px;top:50px;width:380px;max-height:64vh;background:#fff;border:1px solid var(--c-bd);border-radius:10px;box-shadow:0 12px 34px rgba(15,39,68,.22);z-index:120;display:none;flex-direction:column;padding:10px 12px}
+.todo-pop.on{display:flex}
+.todo-poph{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--c-t2)}
+.todo-poph .todo-hint{margin-left:auto;font-size:10.5px;font-weight:400;color:var(--c-t3)}
 .todo-add{margin-top:9px}
 .todo-add input{width:100%;box-sizing:border-box;border:1px solid var(--c-bds);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;outline:none}
 .todo-add input:focus{border-color:var(--c-pri)}
-.todo-list{margin-top:7px;max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.todo-list{margin-top:7px;flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:4px}
 .todo-item{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:7px;font-size:13px}
 .todo-item:hover{background:var(--c-bg)}
 .todo-item .tk-check{cursor:pointer;color:var(--c-t3);display:grid;place-items:center}
@@ -319,22 +317,23 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="sp"></div>
   <div class="gen" id="gen">—</div>
   <div class="bell" onclick="toggleInbox()" title="需要你介入的事项"><i class="ti ti-bell"></i><span class="badge" id="inbox-badge" style="display:none">0</span></div>
+  <button class="rf" id="todo-btn" onclick="toggleTodoPop()" title="速记小任务（本地·不入库·与 spec 隔离；可在终端里让 claude 帮你记）"><i class="ti ti-pin"></i> 速记 <span class="rf-badge" id="todo-count" style="display:none"></span></button>
   <button class="rf" onclick="openOverview()" title="进度总览（spec 统计 + 优先级里程碑）"><i class="ti ti-chart-bar"></i> 进度</button>
   <button class="rf" onclick="editLessons()" title="Steward 全局经验库（跨项目共享·开发 agent 开工前都会读）"><i class="ti ti-book"></i> 经验库</button>
   <button class="rf" onclick="refreshAll()"><i class="ti ti-refresh"></i> 刷新</button>
 </div>
 <div id="readybar" class="readybar" style="display:none"></div>
 <div class="inbox-pop" id="inbox-pop"></div>
+<div class="todo-pop" id="todo-pop">
+  <div class="todo-poph"><i class="ti ti-pin"></i> 速记 · 小任务 <span class="todo-hint">本地 · 不入库 · 不进流程</span></div>
+  <div class="todo-add"><input id="todo-input" type="text" maxlength="300" placeholder="记一条小任务，回车添加…" onkeydown="if(event.key==='Enter')addTodo()"></div>
+  <div id="todo-list" class="todo-list"></div>
+</div>
 
 <div class="wrap">
   <div class="left">
     <div class="sec"><i class="ti ti-users-group"></i> 开发状态</div>
     <div class="team" id="team"></div>
-    <div id="todobox" class="todobox" style="display:none">
-      <div class="todo-h" onclick="toggleTodoBox()"><i class="ti ti-pin"></i> 速记 · 小任务 <span id="todo-count" class="todo-cnt" style="display:none"></span><span class="todo-hint">本地 · 不入库 · 不进流程</span><i class="ti ti-chevron-down todo-chev"></i></div>
-      <div class="todo-add"><input id="todo-input" type="text" maxlength="300" placeholder="记一条小任务，回车添加…" onkeydown="if(event.key==='Enter')addTodo()"></div>
-      <div id="todo-list" class="todo-list"></div>
-    </div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
       <div class="sec"><i class="ti ti-list-check"></i> 任务清单（进度 / 验收 · 待验收可直接通过或打回）</div>
@@ -1196,7 +1195,7 @@ try{
   const es=new EventSource('/api/events');
   es.onmessage=(e)=>{
     let d; try{ d=JSON.parse(e.data); }catch{ refreshAll(); loadInbox(true); return; }
-    if(d.type==='refresh'){ refreshAll(); loadInbox(true); return; }
+    if(d.type==='refresh'){ refreshAll(); loadInbox(true); loadTodos(); return; }
     if(d.type==='chat' && d.project===PROJECT && MODE==='chat'){
       if(d.kind==='tool') append('sys', d.text);
       else if(d.kind==='text') append('ai', d.text);
@@ -1208,7 +1207,6 @@ function openOverview(){ document.getElementById('ov-modal').classList.add('on')
 function closeOverview(){ document.getElementById('ov-modal').classList.remove('on'); }
 // ===== v1 速记小任务（项目级 · 存 docs/tasks.json 的 items · 本地不入库 · 与 spec 完全隔离） =====
 let todos=[];
-let todoCollapsed=(()=>{ try{return localStorage.getItem('todoCollapsed')==='1';}catch{return false;} })();
 async function loadTodos(){
   if(!PROJECT){ todos=[]; renderTodos(); return; }
   try{ const r=await (await fetch('/api/tasks?project='+PROJECT+'&t='+Date.now())).json(); todos=Array.isArray(r.items)?r.items:[]; }catch(e){ todos=[]; }
@@ -1217,8 +1215,6 @@ async function loadTodos(){
 function saveTodos(){ if(!PROJECT)return; fetch('/api/todos?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:todos})}).catch(()=>{}); }
 function todoSort(a,b){ if(a.done!==b.done)return a.done?1:-1; if(!a.done){ if(!!a.pri!==!!b.pri)return a.pri?-1:1; return (a.ts||0)-(b.ts||0); } return (b.ts||0)-(a.ts||0); }
 function renderTodos(){
-  const box=document.getElementById('todobox'); if(!box)return;
-  box.style.display=PROJECT?'':'none'; box.classList.toggle('collapsed',todoCollapsed);
   const open=todos.filter(t=>!t.done).length;
   const cnt=document.getElementById('todo-count'); if(cnt){ cnt.textContent=open||''; cnt.style.display=open?'':'none'; }
   const list=document.getElementById('todo-list'); if(!list)return;
@@ -1250,7 +1246,16 @@ function editTodo(el,id){
   el.onblur=()=>finish(true);
   el.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); el.blur(); } else if(e.key==='Escape'){ e.preventDefault(); el.onblur=null; finish(false); } };
 }
-function toggleTodoBox(){ todoCollapsed=!todoCollapsed; try{localStorage.setItem('todoCollapsed',todoCollapsed?'1':'0');}catch{} renderTodos(); }
+function toggleTodoPop(){
+  const pop=document.getElementById('todo-pop'); if(!pop)return;
+  const willOpen=!pop.classList.contains('on');
+  pop.classList.toggle('on',willOpen);
+  if(willOpen){
+    const ip=document.getElementById('inbox-pop'); if(ip)ip.classList.remove('on');
+    loadTodos();   // 拉最新（含你在终端里让 claude 记进来的）
+    setTimeout(()=>{ const i=document.getElementById('todo-input'); if(i)i.focus(); },30);
+  }
+}
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); loadTodos(); });
 loadHealth();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
@@ -1262,6 +1267,8 @@ document.addEventListener('click',e=>{
   if(ip&&ip.classList.contains('on')&&!e.target.closest('#inbox-pop')&&!e.target.closest('.bell')) ip.classList.remove('on');
   const cp=document.getElementById('cmd-pop');
   if(cp&&cp.classList.contains('on')&&!e.target.closest('#cmd-pop')&&!e.target.closest('#t-cmd')) cp.classList.remove('on');
+  const tp=document.getElementById('todo-pop');
+  if(tp&&tp.classList.contains('on')&&!e.target.closest('#todo-pop')&&!e.target.closest('#todo-btn')) tp.classList.remove('on');
 });
 // 左右分隔条拖拽：调整右侧宽度（左侧自适应），记忆到 localStorage
 (function(){
