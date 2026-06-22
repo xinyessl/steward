@@ -24,6 +24,8 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .projchip-x{opacity:0;font-size:13px;margin-right:-3px}
 .projchip:hover .projchip-x{opacity:.6}
 .projchip-x:hover{opacity:1!important;color:#ff8f8f}
+.projchip.dragover{outline:2px dashed #9ec5ec;outline-offset:2px}
+.projchip.dragging{opacity:.45}
 .pj-badge{background:var(--c-dg);color:#fff;border-radius:8px;font-size:10px;font-weight:700;min-width:15px;height:15px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe);line-height:1}
 .projtgl{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer;flex-shrink:0}.projtgl:hover{background:rgba(255,255,255,.2)}
 .tb .rf{background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px;display:flex;gap:5px;align-items:center}.tb .rf:hover{background:rgba(255,255,255,.18)}
@@ -965,12 +967,28 @@ function toggleProjView(){ projViewMode = projViewMode==='spread'?'select':'spre
 let attnByProject={};   // {项目id: 有几个 CLI 窗口在等你确认}——驱动顶部项目角标（不是 spec 待处理数）
 function renderProjSpread(){
   const sp=document.getElementById('proj-spread'); if(!sp)return;
-  sp.innerHTML=PROJECTS.map(p=>{ const n=attnByProject[p.id]||0; return `<span class="projchip ${p.id===PROJECT?'on':''}" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}${n?` · ${n} 个 CLI 窗口在等你确认`:''}">${esc(p.name)}${n?`<span class="pj-badge" title="${n} 个 CLI 窗口在等你确认">${n}</span>`:''}<i class="ti ti-x projchip-x" onclick="event.stopPropagation();removeProject('${jss(p.id)}')" title="移除「${esc(p.name)}」"></i></span>`; }).join('');
+  sp.innerHTML=PROJECTS.map(p=>{ const n=attnByProject[p.id]||0; return `<span class="projchip ${p.id===PROJECT?'on':''}" draggable="true" ondragstart="projDragStart(event,'${jss(p.id)}')" ondragover="projDragOver(event)" ondragleave="projDragLeave(event)" ondrop="projDrop(event,'${jss(p.id)}')" ondragend="projDragEnd(event)" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}${n?` · ${n} 个 CLI 窗口在等你确认`:''}（可拖拽排序）">${esc(p.name)}${n?`<span class="pj-badge" title="${n} 个 CLI 窗口在等你确认">${n}</span>`:''}<i class="ti ti-x projchip-x" onclick="event.stopPropagation();removeProject('${jss(p.id)}')" title="移除「${esc(p.name)}」"></i></span>`; }).join('');
 }
 function applyProjBadges(){   // CLI 等确认数变化时刷新：铺开 chip 重渲染 + 下拉选项加 (N)
   renderProjSpread();
   const sel=document.getElementById('proj');
   if(sel) [...sel.options].forEach(o=>{ const p=PROJECTS.find(x=>x.id===o.value); if(!p)return; const n=attnByProject[o.value]||0; o.textContent=p.name+(n?` (${n})`:''); });
+}
+// 项目 chips 拖拽排序（顺序持久化到 projects.json）
+let draggedProj=null;
+function projDragStart(e,id){ draggedProj=id; try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',id);}catch{} try{e.currentTarget.classList.add('dragging');}catch{} }
+function projDragOver(e){ e.preventDefault(); try{e.dataTransfer.dropEffect='move';}catch{} e.currentTarget.classList.add('dragover'); }
+function projDragLeave(e){ e.currentTarget.classList.remove('dragover'); }
+function projDragEnd(e){ document.querySelectorAll('.projchip.dragover,.projchip.dragging').forEach(x=>x.classList.remove('dragover','dragging')); draggedProj=null; }
+function projDrop(e,id){
+  e.preventDefault(); document.querySelectorAll('.projchip.dragover').forEach(x=>x.classList.remove('dragover'));
+  if(!draggedProj||draggedProj===id){ draggedProj=null; return; }
+  const arr=PROJECTS.slice(); const from=arr.findIndex(p=>p.id===draggedProj); if(from<0){ draggedProj=null; return; }
+  const moved=arr.splice(from,1)[0]; let ti=arr.findIndex(p=>p.id===id); if(ti<0)ti=arr.length; arr.splice(ti,0,moved);
+  PROJECTS=arr; draggedProj=null;
+  const sel=document.getElementById('proj'); if(sel){ const cur=PROJECT; sel.innerHTML=PROJECTS.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); sel.value=cur; }
+  applyProjBadges();
+  fetch('/api/project-reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:PROJECTS.map(p=>p.id)})}).catch(()=>{});
 }
 function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal(); loadTodos(); }
 function onProj(){ selectProject(document.getElementById('proj').value); }

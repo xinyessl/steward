@@ -720,6 +720,21 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/project-reorder' && req.method === 'POST') {   // 按传入的 id 顺序重排 projects.json(未列出的保留在末尾)
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let ids = []; try { ids = JSON.parse(buf).ids || []; } catch {}
+      if (!Array.isArray(ids)) return send(res, 400, JSON.stringify({ error: 'ids 非法' }));
+      let j = { projects: [] }; try { j = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')); } catch {}
+      if (!j.projects) j.projects = [];
+      const byId = new Map(j.projects.map(p => [p.id, p])); const ordered = [], seen = new Set();
+      for (const id of ids) { const p = byId.get(id); if (p && !seen.has(id)) { ordered.push(p); seen.add(id); } }
+      for (const p of j.projects) if (!seen.has(p.id)) ordered.push(p);
+      j.projects = ordered;
+      try { fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ error: e.message })); }
+      send(res, 200, JSON.stringify({ ok: true }));
+    });
+    return;
+  }
   if (url.pathname === '/api/chat-clear' && req.method === 'POST') { const p = projById(pid); try { fs.writeFileSync(chatFile(p), JSON.stringify({ messages: [] })); writeSess(p, null); } catch {} return send(res, 200, JSON.stringify({ ok: true })); }
   if (url.pathname === '/api/chat-delete' && req.method === 'POST') {
     const p = projById(pid); let buf = '';
