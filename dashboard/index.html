@@ -311,6 +311,7 @@ body.resizing #term-host iframe{pointer-events:none}
     <select id="proj" class="projsel" onchange="onProj()"></select>
     <div id="proj-spread" class="projspread" style="display:none"></div>
     <button class="projtgl" id="proj-toggle" onclick="toggleProjView()" title="切换：下拉 / 全部铺开"><i class="ti ti-layout-grid"></i></button>
+    <button class="projtgl" id="proj-rename" onclick="renameProject()" title="重命名当前项目"><i class="ti ti-pencil"></i></button>
     <button class="projtgl" id="proj-feishu" onclick="openFeishuCfg()" title="飞书文档接入配置（当前项目）"><i class="ti ti-cloud-cog"></i></button>
     <button class="projtgl" id="proj-del" onclick="delCurrentProject()" title="移除当前项目（仅取消纳管，不删磁盘文件）"><i class="ti ti-trash"></i></button>
   </div>
@@ -364,6 +365,16 @@ body.resizing #term-host iframe{pointer-events:none}
 </div>
 
 <!-- 新增/导入项目弹窗 -->
+<div class="amask" id="rnmask">
+  <div class="amodal" style="height:auto;width:420px">
+    <div class="amh"><i class="ti ti-pencil" style="margin-right:8px;color:var(--c-pri)"></i>重命名项目<span class="amx" onclick="closeRename()">&times;</span></div>
+    <div style="padding:18px">
+      <div class="pf"><label>项目名称</label><input id="rn-name" maxlength="40" placeholder="项目显示名" onkeydown="if(event.key==='Enter')saveRename()"></div>
+      <div style="font-size:11px;color:var(--c-t3)">只改显示名称；项目 ID 与磁盘路径不变。</div>
+    </div>
+    <div class="amf"><span id="rn-err" style="margin-right:auto;color:var(--c-dg);font-size:12px;align-self:center"></span><button class="abtn ghost" onclick="closeRename()">取消</button><button class="abtn" id="rn-submit" onclick="saveRename()">保存</button></div>
+  </div>
+</div>
 <div class="amask" id="fkmask">
   <div class="amodal" style="height:auto;max-height:82vh;width:480px">
     <div class="amh"><i class="ti ti-cloud-cog" style="margin-right:8px;color:var(--c-pri)"></i>飞书文档接入 · <span id="fk-proj"></span><span class="amx" onclick="closeFeishuCfg()">&times;</span></div>
@@ -1079,6 +1090,18 @@ async function submitAddProject(){
       fireCmd('/scan');
     }
   }catch(e){ err.textContent='失败：'+e.message; btn.disabled=false; btn.textContent='添加'; }
+}
+// —— 重命名当前项目（只改显示名，id/path 不变）——
+function renameProject(){ if(!PROJECT){ toast('请先选一个项目'); return; } const p=PROJECTS.find(x=>x.id===PROJECT)||{}; document.getElementById('rn-name').value=p.name||''; document.getElementById('rn-err').textContent=''; document.getElementById('rnmask').classList.add('on'); setTimeout(()=>{ const i=document.getElementById('rn-name'); if(i){ i.focus(); i.select(); } },30); }
+function closeRename(){ document.getElementById('rnmask').classList.remove('on'); }
+async function saveRename(){
+  const name=document.getElementById('rn-name').value.trim(), err=document.getElementById('rn-err'); err.textContent='';
+  if(!name){ err.textContent='名称不能为空'; return; }
+  const btn=document.getElementById('rn-submit'); btn.disabled=true;
+  try{ const r=await (await fetch('/api/project-rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:PROJECT,name})})).json();
+    if(r.ok){ const pj=PROJECTS.find(x=>x.id===PROJECT); if(pj)pj.name=r.name; applyProjBadges(); closeRename(); toast('已重命名'); } else err.textContent=r.error||'保存失败';
+  }catch(e){ err.textContent='失败：'+e.message; }
+  btn.disabled=false;
 }
 // —— 飞书文档接入配置（当前项目，可后续补/改）——
 async function openFeishuCfg(){

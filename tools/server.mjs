@@ -706,6 +706,20 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/project-rename' && req.method === 'POST') {   // 改项目显示名(id / path 不变)
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const id = String(b.id || '').trim(), name = String(b.name || '').trim().slice(0, 40);
+      if (!id || !name) return send(res, 400, JSON.stringify({ error: '缺少 id 或名称' }));
+      let j = { projects: [] }; try { j = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf8')); } catch {}
+      if (!j.projects) j.projects = [];
+      const p = j.projects.find(x => x.id === id); if (!p) return send(res, 400, JSON.stringify({ error: '项目不存在' }));
+      p.name = name;
+      try { fs.writeFileSync(PROJECTS_FILE, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ error: e.message })); }
+      send(res, 200, JSON.stringify({ ok: true, name }));
+    });
+    return;
+  }
   if (url.pathname === '/api/chat-clear' && req.method === 'POST') { const p = projById(pid); try { fs.writeFileSync(chatFile(p), JSON.stringify({ messages: [] })); writeSess(p, null); } catch {} return send(res, 200, JSON.stringify({ ok: true })); }
   if (url.pathname === '/api/chat-delete' && req.method === 'POST') {
     const p = projById(pid); let buf = '';
