@@ -541,6 +541,11 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
   if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
+  if (url.pathname === '/api/attn') {   // 跨项目：哪些项目有 CLI 窗口在等你确认（claude 停下等 y/n/选择）→ 驱动项目角标 + 浏览器标题
+    const byProject = {}; let total = 0;
+    for (const w of openWindows.values()) if (w.confirm) { byProject[w.projectId] = (byProject[w.projectId] || 0) + 1; total++; }
+    return send(res, 200, JSON.stringify({ byProject, total }));
+  }
   if (url.pathname === '/api/window-seen' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let k = ''; try { k = String(JSON.parse(buf).key || ''); } catch {} const w = openWindows.get(k); if (w) w.done = false; send(res, 200, JSON.stringify({ ok: true })); }); return; }
   if (url.pathname === '/api/window-send' && req.method === 'POST') {   // 往某终端窗口发命令（等 claude 就绪再发，后台进行，立即返回）
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
