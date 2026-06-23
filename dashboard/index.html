@@ -1157,12 +1157,12 @@ async function importFeishuDoc(){
   if(!url){ fkMsg('先粘贴飞书文档链接'); return; }
   if(!PROJECT){ toast('请先选一个项目'); return; }
   closeFeishuCfg(); setMode('term');
-  toast('已开新终端窗口并预填 /intake —— 回车开始（拉取+分诊约 1~2 分钟，看新窗口）');
+  toast('已开专用新窗口 —— claude 启动后自动执行 /intake（拉取+分诊约 1~2 分钟，看新窗口）');
   await loadTerminal();
-  await newWindow();   // 专用新窗口，避免和正在干活的窗口抢（被占用会一直排队、看着像没反应）
+  await newWindow();   // 专用新窗口，避免和正在干活的窗口抢
   const w=windows[activeIdx]||windows[windows.length-1]; if(!w) return;
-  let tries=0; const fire=()=>{ fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'/intake '+url+' ',enter:false})}).catch(()=>{ if(tries++<3) setTimeout(fire,600); }); };
-  setTimeout(fire,1500);   // 等新窗口 claude 启动再预填；enter:false=你确认后回车执行（自己触发分诊）
+  // 服务端 window-send 会自己轮询等 claude 就绪再发，并自动回车(enter 默认 true)——这里直接发即可
+  fetch('/api/window-send?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:w.key,text:'/intake '+url,enter:true})}).catch(()=>{});
 }
 
 // —— agent 提示词查看/编辑 ——
