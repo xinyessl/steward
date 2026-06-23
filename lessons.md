@@ -23,6 +23,7 @@
 - [ ] 列表/表格页布局先数搜索条件：**少（≤2~3 个）就单行**——查询/重置按钮紧跟搜索框后面，别另起一行
 - [ ] **筛选项只有 1 个（简单文本搜索框/单个下拉）→ 不放前置 label**，直接靠 placeholder（label 与 placeholder 重复多余）；**≥2 个同类筛选项才放 label** 便于区分对齐。例外：日期范围筛选始终保留合并 label（如「出院日期」「申请日期」），因范围控件占位不够自解释（见 UI 规范第 9 条）。
 - [ ] **派生/聚合数据时，前端分组/筛选依赖的字段必须一并透传**：生成 board.json / 汇总 JSON 这类「派生数据」时，凡是 UI 拿来**分组、筛选、排序**的字段（如 `module`/`tag`/`owner`）都要写进去——漏一个，对应功能会**静默退化**（如"按模块分组"全落到「未标模块」），且常在重新生成/重启后才暴露，排查时容易误判成数据丢了。改派生脚本后，对一遍「源数据有哪些字段 vs 前端实际用到哪些字段」。
+- [ ] **接飞书 wiki 文档**：除了 `docx:document:readonly`，还要开 `wiki:wiki:readonly`（解析知识库节点）+ 把该**知识库共享给应用**；只开 docx 会在 `wiki/v2/spaces/get_node` 阶段报 `99991672` 权限不足。按"文档在哪类容器(云空间文件夹 / 知识库 wiki)"决定开哪套权限 + 共享对应容器。
 - [ ] （在此继续追加……）
 
 ---
@@ -99,6 +100,14 @@
 - 解法：派生 `board.json` 的 `specs.push` 补上 `module: (fm.module||'').trim()`；并把 5 个存量项目的 board.mjs 一并同步、重算看板。
 - 防复发：见自检清单「派生数据时前端依赖字段必须一并透传」；改任何"源→派生数据"的脚本，先列清楚前端到底用了哪些字段，逐一核对别漏。
 - 关联：UI 规范无；steward 控制台看板分组。
+
+### L-004 飞书 wiki 文档读不到：光开 docx 权限不够，wiki 要单独开权限 + 共享知识库
+- 范围/模块：通用 · 飞书开放平台文档接入（steward `/intake` / feishu-fetch）
+- 现象：配好飞书自建应用、开了 `docx:document:readonly`，拉 `/wiki/` 链接报 `99991672 Access denied. scopes required: wiki:wiki / wiki:wiki:readonly / wiki:node:read`。
+- 根因：知识库(wiki) 与云文档(docx) 是**两套权限**。`/wiki/<token>` 要先调 `wiki/v2/spaces/get_node` 解析节点（需 wiki 读权限），解析出的 docx 再读正文（才用 docx 权限）。只开 docx → 卡在 get_node。
+- 解法：开放平台给应用加 `wiki:wiki:readonly`（+`docx:document:readonly`）→ **重新发布版本**（权限变更要重发才生效）→ 并把**该知识库共享给应用**（光有 scope、不共享具体知识库也读不到）。
+- 防复发：见自检清单对应项；飞书接入先看"文档在哪类容器"再决定权限 + 共享。
+- 关联：steward 飞书接入（feishu-fetch / `/intake`）；无 spec。
 
 <!-- 追加模板：
 ### L-NNN <一句话现象>
