@@ -614,14 +614,14 @@ const server = http.createServer((req, res) => {
       if (!w || !w.tmuxSess || !TMUX_BIN || !text) return send(res, 200, JSON.stringify({ ok: false, error: 'no window/text' }));
       send(res, 200, JSON.stringify({ ok: true, queued: true }));
       let tries = 0;
-      const trySend = () => {
-        const pane = capturePane(w.tmuxSess);
+      const trySend = async () => {
+        const pane = await capturePane(w.tmuxSess);   // 必须 await：capturePane 返回 Promise，之前没 await 导致就绪检测永远不命中、死等满轮询才发
         const ready = /bypass permissions|shift\+tab|❯/.test(pane);
-        if (!ready && tries++ < 30) return void setTimeout(trySend, 800);   // 最多等 ~24s claude 起好
+        if (!ready && tries++ < 40) return void setTimeout(trySend, 400);   // 就绪即发；最多 ~16s 兜底
         try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'send-keys', '-t', w.tmuxSess, '-l', text]); } catch {}
-        if (enter) setTimeout(() => { try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'send-keys', '-t', w.tmuxSess, 'Enter']); } catch {} }, 400);
+        if (enter) setTimeout(() => { try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'send-keys', '-t', w.tmuxSess, 'Enter']); } catch {} }, 250);
       };
-      setTimeout(trySend, 1500);
+      setTimeout(trySend, 500);
     });
     return;
   }
