@@ -382,8 +382,12 @@ body.resizing #term-host iframe{pointer-events:none}
       <div class="pf"><label>App Secret</label><input id="fk-secret" type="password" placeholder="飞书应用 App Secret"></div>
       <div class="pf"><label>文档域名（可选）</label><input id="fk-domain" placeholder="如 xxx.feishu.cn（不同企业/租户不同；可留空）"></div>
       <div class="pf" style="font-size:11.5px;color:var(--c-t3);line-height:1.7">每个项目用<b>自己企业的飞书自建应用</b>：开放平台建应用 → 开 <code>docx:document:readonly</code> 等读权限 → 发布 → 把放需求文档的文件夹/知识库共享给该应用（可阅读）。<br>凭据按项目存本地 <code>~/.steward/feishu.json</code>，<b>不入任何仓库</b>。清空 App ID 保存 = 删除本项目配置。</div>
+      <div class="pf" style="border-top:1px dashed var(--c-bd);padding-top:13px;margin-top:6px"><label>用飞书链接导入需求（/intake）</label>
+        <div style="display:flex;gap:6px"><input id="fk-url" placeholder="粘贴飞书文档链接（/docx/ 或 /wiki/）" style="flex:1"><button type="button" class="abtn" style="white-space:nowrap" onclick="importFeishuDoc()"><i class="ti ti-download"></i> 导入分诊</button></div>
+        <div style="font-size:11px;color:var(--c-t3);margin-top:5px">在当前项目终端预填 <code>/intake &lt;链接&gt;</code>：拉正文 → 对照历史 spec 分诊 → 出分流清单让你确认 → 落 spec / 速记。需先配好上面的凭据。</div>
+      </div>
     </div>
-    <div class="amf"><span id="fk-err" style="margin-right:auto;color:var(--c-dg);font-size:12px;align-self:center"></span><button class="abtn ghost" onclick="closeFeishuCfg()">取消</button><button class="abtn" id="fk-submit" onclick="saveFeishuCfg()">保存</button></div>
+    <div class="amf"><span id="fk-err" style="margin-right:auto;font-size:12px;align-self:center"></span><button class="abtn ghost" id="fk-test" onclick="testFeishuCfg()">测试连接</button><button class="abtn ghost" onclick="closeFeishuCfg()">取消</button><button class="abtn" id="fk-submit" onclick="saveFeishuCfg()">保存</button></div>
   </div>
 </div>
 <div class="amask" id="pmask">
@@ -1119,11 +1123,12 @@ async function saveRename(){
   btn.disabled=false;
 }
 // —— 飞书文档接入配置（当前项目，可后续补/改）——
+function fkMsg(text,ok){ const e=document.getElementById('fk-err'); e.textContent=text||''; e.style.color=ok?'var(--c-ok)':'var(--c-dg)'; }
 async function openFeishuCfg(){
   if(!PROJECT){ toast('请先选一个项目'); return; }
   document.getElementById('fk-proj').textContent=(PROJECTS.find(p=>p.id===PROJECT)||{}).name||PROJECT;
-  document.getElementById('fk-err').textContent='';
-  ['fk-appid','fk-secret','fk-domain'].forEach(i=>document.getElementById(i).value='');
+  fkMsg('');
+  ['fk-appid','fk-secret','fk-domain','fk-url'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   document.getElementById('fk-secret').placeholder='飞书应用 App Secret';
   try{ const c=await (await fetch('/api/feishu-config?project='+PROJECT)).json();
     document.getElementById('fk-appid').value=c.appId||''; document.getElementById('fk-domain').value=c.domain||'';
@@ -1132,13 +1137,27 @@ async function openFeishuCfg(){
   document.getElementById('fkmask').classList.add('on');
 }
 function closeFeishuCfg(){ document.getElementById('fkmask').classList.remove('on'); }
+function fkForm(){ return { project:PROJECT, appId:document.getElementById('fk-appid').value.trim(), appSecret:document.getElementById('fk-secret').value, domain:document.getElementById('fk-domain').value.trim() }; }
 async function saveFeishuCfg(){
-  const appId=document.getElementById('fk-appid').value.trim(), appSecret=document.getElementById('fk-secret').value, domain=document.getElementById('fk-domain').value.trim();
-  const btn=document.getElementById('fk-submit'), err=document.getElementById('fk-err'); err.textContent=''; btn.disabled=true;
-  try{ const r=await (await fetch('/api/feishu-config-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:PROJECT,appId,appSecret,domain})})).json();
-    if(r.ok){ toast(appId?'飞书配置已保存':'已清除本项目飞书配置'); closeFeishuCfg(); } else err.textContent=r.error||'保存失败';
-  }catch(e){ err.textContent='失败：'+e.message; }
+  const f=fkForm(); const btn=document.getElementById('fk-submit'); fkMsg(''); btn.disabled=true;
+  try{ const r=await (await fetch('/api/feishu-config-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)})).json();
+    if(r.ok){ toast(f.appId?'飞书配置已保存':'已清除本项目飞书配置'); closeFeishuCfg(); } else fkMsg(r.error||'保存失败');
+  }catch(e){ fkMsg('失败：'+e.message); }
   btn.disabled=false;
+}
+async function testFeishuCfg(){
+  const f=fkForm(); const btn=document.getElementById('fk-test'); fkMsg('⏳ 测试中…',true); btn.disabled=true;
+  try{ const r=await (await fetch('/api/feishu-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)})).json();
+    fkMsg(r.ok?'✓ 连接成功（凭据有效）':('✗ '+(r.error||'连接失败')), !!r.ok);
+  }catch(e){ fkMsg('✗ 失败：'+e.message); }
+  btn.disabled=false;
+}
+function importFeishuDoc(){
+  const url=(document.getElementById('fk-url').value||'').trim();
+  if(!url){ fkMsg('先粘贴飞书文档链接'); return; }
+  closeFeishuCfg();
+  sendToTerm('/intake '+url+' ', false);   // 预填到当前项目终端，你确认后回车执行
+  toast('已在终端预填 /intake，回车即开始拉取+分诊');
 }
 
 // —— agent 提示词查看/编辑 ——

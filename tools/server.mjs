@@ -410,6 +410,24 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/feishu-test' && req.method === 'POST') {   // 测试连接：用表单(或已存)凭据真连飞书拿 tenant_access_token
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', async () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const id = String(b.project || '').trim(); const cur = id ? (loadFeishu()[id] || {}) : {};
+      const appId = String(b.appId || cur.appId || '').trim();
+      const appSecret = (b.appSecret && String(b.appSecret).trim()) || cur.appSecret || '';
+      const domain = String(b.domain || cur.domain || '');
+      if (!appId || !appSecret) return send(res, 200, JSON.stringify({ ok: false, error: '缺 App ID / App Secret' }));
+      const base = /larksuite|larkoffice/i.test(domain) ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
+      try {
+        const r = await fetch(base + '/open-apis/auth/v3/tenant_access_token/internal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_id: appId, app_secret: appSecret }) });
+        const j = await r.json();
+        if (j.code === 0) return send(res, 200, JSON.stringify({ ok: true }));
+        return send(res, 200, JSON.stringify({ ok: false, error: `飞书返回 ${j.code}: ${j.msg}` }));
+      } catch (e) { return send(res, 200, JSON.stringify({ ok: false, error: '连接飞书失败：' + ((e && e.message) || e) })); }
+    });
+    return;
+  }
   if (url.pathname === '/api/spec') {
     const p = projById(pid), id = (url.searchParams.get('id') || '').trim();
     if (!p) return send(res, 404, JSON.stringify({ error: '项目不存在' }));

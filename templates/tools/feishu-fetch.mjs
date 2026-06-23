@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const API = process.env.FEISHU_API_BASE || 'https://open.feishu.cn';   // 国际版 Lark 用 https://open.larksuite.com
+let API = process.env.FEISHU_API_BASE || 'https://open.feishu.cn';   // 按项目 domain 自动切：国际版 Lark → open.larksuite.com（main 里据 creds.domain 调整）
 const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
 
 function die(msg) { console.error('feishu-fetch: ' + msg); process.exit(1); }
@@ -56,7 +56,9 @@ async function api(token, p) {
 async function main() {
   const u = process.argv[2];
   if (!u) die('用法: node tools/feishu-fetch.mjs "<飞书文档链接>"');
-  const token = await tenantToken(loadCreds());
+  const creds = loadCreds();
+  if (!process.env.FEISHU_API_BASE && /larksuite|larkoffice/i.test(creds.domain || '')) API = 'https://open.larksuite.com';
+  const token = await tenantToken(creds);
   let { kind, token: t } = parseUrl(u);
   let docId = t;
   if (kind === 'wiki') {
