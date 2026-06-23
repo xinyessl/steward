@@ -57,7 +57,7 @@ function childEnv(projectId) {
   for (const k of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH']) delete e[k];
   e.STEWARD_LESSONS = LESSONS_FILE;   // 让子 claude 知道 Steward 全局经验库在哪（兼容 STEWARD_DATA 覆盖）
   e.STEWARD_DATA = DATA_DIR;          // 让子进程脚本（如 feishu-fetch）找到 ~/.steward 数据目录
-  if (projectId) e.STEWARD_PROJECT_ID = projectId;   // 当前终端属于哪个项目 → /intake 用对应项目的飞书机器人
+  if (projectId) e.STEWARD_PROJECT_ID = projectId; else delete e.STEWARD_PROJECT_ID;   // 当前终端属于哪个项目；projectId 缺失则删掉，绝不继承泄漏旧值
   return e;
 }
 // 内嵌终端：每项目一个 ttyd（按 projects.json 顺序分配端口）

@@ -12,14 +12,15 @@ const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward')
 function die(msg) { console.error('feishu-fetch: ' + msg); process.exit(1); }
 
 function resolveProjectId() {
-  if (process.env.STEWARD_PROJECT_ID) return process.env.STEWARD_PROJECT_ID;
+  // cwd 优先：终端实际所在目录 = 真实项目，最可靠。STEWARD_PROJECT_ID 仅当 cwd 不在任何项目内时兜底——
+  // env 可能因窗口复用 / 孤儿 ttyd 与实际目录串掉，故绝不让它压过 cwd。
   try {
     const ps = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'projects.json'), 'utf8')).projects || [];
-    const cwd = process.cwd();
-    const hit = ps.find(p => p.path && (cwd === p.path || cwd.startsWith(p.path + '/')));
-    if (hit) return hit.id;
+    const cwd = process.cwd(); let best = null;
+    for (const p of ps) if (p.path && (cwd === p.path || cwd.startsWith(p.path + '/'))) { if (!best || p.path.length > best.path.length) best = p; }   // 最长匹配，避免嵌套/前缀误命中
+    if (best) return best.id;
   } catch {}
-  return '';
+  return process.env.STEWARD_PROJECT_ID || '';
 }
 
 function loadCreds() {
