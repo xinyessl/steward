@@ -391,9 +391,9 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (url.pathname === '/api/feishu-config') {   // 读某项目飞书配置（不回明文 secret，只回是否已配 + appId/domain）
+  if (url.pathname === '/api/feishu-config') {   // 读某项目飞书配置（本地工具：回传 secret 以便控制台「查看密钥」，仅 localhost）
     const m = loadFeishu(), c = m[pid] || {};
-    return send(res, 200, JSON.stringify({ appId: c.appId || '', domain: c.domain || '', hasSecret: !!c.appSecret }));
+    return send(res, 200, JSON.stringify({ appId: c.appId || '', appSecret: c.appSecret || '', domain: c.domain || '', hasSecret: !!c.appSecret }));
   }
   if (url.pathname === '/api/feishu-config-save' && req.method === 'POST') {   // 存某项目飞书机器人凭据（按项目隔离·不入库）
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
