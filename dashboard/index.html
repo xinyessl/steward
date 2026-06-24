@@ -352,6 +352,7 @@ body.resizing #term-host iframe{pointer-events:none}
       <span class="rl" id="t-cmd" onclick="toggleCmds()"><i class="ti ti-command"></i> 命令</span>
       <span class="rl" id="t-new" onclick="newWindow()"><i class="ti ti-plus"></i> 新窗口</span>
       <span class="rl" id="t-hist" onclick="toggleHistory()"><i class="ti ti-history"></i> 历史对话</span>
+      <span class="rl" id="t-copy" onclick="copyTermScreen(event)" title="复制当前终端屏幕文本到剪贴板（Shift+点=连滚动历史一起复制）"><i class="ti ti-copy"></i> 复制</span>
     </div>
     <div class="hist-pop" id="cmd-pop"></div>
     <div id="mode-term" style="display:flex;flex-direction:column;flex:1;min-height:0">
@@ -664,6 +665,21 @@ async function sendToTerm(text, enter){
   if(reused) fire(); else setTimeout(fire,900);   // 已有窗口立即发；新建窗口给 claude 一点启动时间
 }
 function prefillTerm(text){ sendToTerm(text,false); }
+async function copyText(text){   // 父页面(localhost·安全上下文)写剪贴板；失败回退 execCommand
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){ try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); ta.remove(); return ok; }catch(e2){ return false; } }
+}
+async function copyTermScreen(ev){   // 抓当前终端屏幕文本→复制(绕开 iframe/OSC52)。Shift+点=连滚动历史
+  const w=windows[activeIdx]||windows[0]; if(!w){ toast('没有终端窗口'); return; }
+  const full=(ev&&ev.shiftKey)?'&full=1':'';
+  try{
+    const r=await (await fetch('/api/window-capture?key='+encodeURIComponent(w.key)+full)).json();
+    const text=(r.text||'').replace(/\s+$/,'');
+    if(!text){ toast('当前屏幕没抓到内容'); return; }
+    const ok=await copyText(text);
+    toast(ok?('已复制 '+text.split('\n').length+' 行到剪贴板'+(full?'（含历史）':'')):'复制失败：浏览器拒绝了剪贴板');
+  }catch(e){ toast('复制失败：'+(e.message||e)); }
+}
 // —— 多选操作（模块栏「合并/删除」对勾选的 spec 生效）——
 let selSpecs=new Set(), mergeIds=[];
 function modKey(sp){ return (sp.module&&sp.module.trim())||'（未标模块）'; }

@@ -607,6 +607,21 @@ const server = http.createServer((req, res) => {
     return send(res, 200, JSON.stringify({ byProject, total }));
   }
   if (url.pathname === '/api/window-seen' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let k = ''; try { k = String(JSON.parse(buf).key || ''); } catch {} const w = openWindows.get(k); if (w) w.done = false; send(res, 200, JSON.stringify({ ok: true })); }); return; }
+  if (url.pathname === '/api/window-capture') {   // 抓某窗口屏幕文本，供「复制」按钮在父页面写剪贴板(绕开 iframe/OSC52)；full=1 抓全部滚动历史
+    const w = openWindows.get(String(url.searchParams.get('key') || ''));
+    if (!w || !w.tmuxSess || !TMUX_BIN) return send(res, 200, JSON.stringify({ text: '' }));
+    const full = url.searchParams.get('full') === '1';
+    capturePane(w.tmuxSess, full).then(out => {
+      const text = (out || '').split('\n').filter(l => {
+        if (l.includes('⠀') || /\([oO0^._]\.[oO0^._]\)|<\(_\)>/.test(l)) return false;   // ccgotchi 宠物行
+        if (l.includes('⏵⏵')) return false;                          // bypass 模式行
+        if (/^\s*\d+h\s.*\d%/.test(l)) return false;                 // 用量/上下文条
+        return true;
+      }).join('\n').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '') + '\n';
+      send(res, 200, JSON.stringify({ text }));
+    }).catch(() => send(res, 200, JSON.stringify({ text: '' })));
+    return;
+  }
   if (url.pathname === '/api/window-send' && req.method === 'POST') {   // 往某终端窗口发命令（等 claude 就绪再发，后台进行，立即返回）
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
       let b = {}; try { b = JSON.parse(buf); } catch {}
