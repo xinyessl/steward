@@ -27,6 +27,8 @@
 
 ## 安装
 
+> 想让 **AI 帮你自动装**？把 [`docs/INSTALL-for-AI.md`](docs/INSTALL-for-AI.md) 丢给它照做即可（含检测/安装/启动/验证/排障全流程）。
+
 依赖：**Node.js**（跑控制台）、**ttyd + tmux**（内嵌终端 + 会话持久化）、**claude CLI**。
 
 ```bash

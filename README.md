@@ -27,6 +27,8 @@ Zero third-party dependencies (one Node script runs the server), a single-page c
 
 ## Install
 
+> Want an **AI to install it for you**? Hand it [`docs/INSTALL-for-AI.md`](docs/INSTALL-for-AI.md) — a step-by-step guide (detect / install / start / verify / troubleshoot) written for an agent to follow.
+
 Requirements: **Node.js** (runs the console), **ttyd + tmux** (embedded terminal + session persistence), and the **claude CLI**.
 
 ```bash
