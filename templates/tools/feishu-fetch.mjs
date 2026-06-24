@@ -74,6 +74,34 @@ async function main() {
   }
   const j = await api(token, `/open-apis/docx/v1/documents/${docId}/raw_content`);
   if (j.code !== 0) die(`读文档失败(${j.code}): ${j.msg}（确认文档/所在文件夹已共享给该应用、且开了 docx:document:readonly 权限）`);
-  process.stdout.write((j.data && j.data.content) || '');
+  let out = (j.data && j.data.content) || '';
+  out += await imagesSection(token, docId);   // raw_content 丢图片 → 额外下载图片，供 /intake 时逐张 Read
+  process.stdout.write(out);
+}
+// 文档里的图片(raw_content 拿不到)：用 blocks 接口按顺序收集 image token → 下载到 docs/.intake/<docId>/ → 末尾列出供 claude 逐张 Read
+async function imagesSection(token, docId) {
+  let tokens = [], pageToken = '';
+  try {
+    do {
+      const j = await api(token, `/open-apis/docx/v1/documents/${docId}/blocks?page_size=500${pageToken ? '&page_token=' + pageToken : ''}`);
+      if (j.code !== 0) return `\n\n---\n⚠️ 取文档块失败(${j.code}: ${j.msg})，图片未拉取。\n`;
+      for (const b of (j.data.items || [])) if (b.block_type === 27 && b.image && b.image.token) tokens.push(b.image.token);
+      pageToken = j.data.has_more ? j.data.page_token : '';
+    } while (pageToken);
+  } catch (e) { return `\n\n---\n⚠️ 取文档块异常：${e.message}\n`; }
+  if (!tokens.length) return '';
+  const outDir = path.join(process.cwd(), 'docs/.intake', docId);
+  try { fs.mkdirSync(outDir, { recursive: true }); } catch {}
+  const saved = []; let denied = false;
+  for (let i = 0; i < tokens.length; i++) {
+    try {
+      const r = await fetch(`${API}/open-apis/drive/v1/medias/${tokens[i]}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) { if (r.status === 400 || r.status === 403) denied = true; continue; }
+      const f = path.join(outDir, `img-${String(i + 1).padStart(2, '0')}.png`);
+      fs.writeFileSync(f, Buffer.from(await r.arrayBuffer())); saved.push(path.relative(process.cwd(), f));
+    } catch {}
+  }
+  if (!saved.length) return `\n\n---\n⚠️ 文档含 ${tokens.length} 张图片但未能下载${denied ? '（应用缺 drive:drive:readonly 权限 → 飞书开放平台补该权限并重新发布版本）' : ''}。图里的界面改动/标注会漏，**分诊前请补权限重拉**，否则需求不完整。\n`;
+  return `\n\n---\n📷 本文档含 ${saved.length} 张图片（按出现顺序，已下载到本地）。**分诊前请逐张用 Read 工具查看**，把图里的界面改动/标注一并纳入，别只看文字：\n` + saved.map((f, i) => `${i + 1}. ${f}`).join('\n') + '\n';
 }
 main().catch(e => die(String((e && e.message) || e)));

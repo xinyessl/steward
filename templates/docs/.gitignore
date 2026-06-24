@@ -3,3 +3,4 @@ board.json
 board.md
 tasks.json
 .state/
+.intake/

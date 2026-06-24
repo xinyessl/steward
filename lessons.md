@@ -109,6 +109,14 @@
 - 防复发：见自检清单对应项；飞书接入先看"文档在哪类容器"再决定权限 + 共享。
 - 关联：steward 飞书接入（feishu-fetch / `/intake`）；无 spec。
 
+### L-005 飞书 raw_content 丢图片，需求藏在截图里 → 漏需求
+- 范围/模块：通用 · 飞书文档接入（steward `/intake` / feishu-fetch）
+- 现象：`/intake` 拉飞书需求文档后分诊、做出来验收，**第一项就没完成**——因为那条需求是用**截图**说明的，而 `docx/v1/.../raw_content` 只回纯文本，图片全丢（顶多剩个 `xxx.png` 占位）。
+- 根因：飞书文档接口 raw_content 不含图片；需求文档又极爱用截图标注界面改动。只读文本 = 漏掉一半需求。
+- 解法：feishu-fetch 额外用 `docx/v1/documents/{id}/blocks` 按序收集 image block(block_type 27) 的 token → `drive/v1/medias/{token}/download` 下载到 `docs/.intake/<docId>/` → 在输出末尾列出路径；`/intake` 让 claude **逐张 Read（视觉）** 并入分诊。下载需应用额外开 **`drive:drive:readonly`** 权限（光 docx 权限会 99991672）。
+- 防复发：飞书接入要把"图片也取下来给模型看"当默认；缺 drive 权限时 fetcher 明确报"图片没拉到、先补权限别硬分诊"。
+- 关联：[[L-004]]（飞书权限分容器）；feishu-fetch / `/intake`。
+
 <!-- 追加模板：
 ### L-NNN <一句话现象>
 - 范围/模块：
