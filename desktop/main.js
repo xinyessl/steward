@@ -85,7 +85,10 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
       const sh = process.env.SHELL || '/bin/zsh';
       proc = pty.spawn(sh, ['-lic', 'exec ' + [CLAUDE, ...args].map(shq).join(' ')], opts);
     }
-  } catch (err) { return { ok: false, error: 'claude 启动失败：' + err.message }; }
+  } catch (err) {
+    console.error('[pty] spawn 失败：', { CLAUDE, shell: process.env.SHELL, platform: process.platform, msg: err && err.message, stack: err && err.stack });
+    return { ok: false, error: 'claude 启动失败：' + (err && err.message) };
+  }
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
   ptys.set(key, rec);
@@ -132,7 +135,18 @@ function createWindow() {
 }
 
 function cleanup() { try { serverProc && serverProc.kill(); } catch {} for (const [, r] of ptys) { try { r.proc.kill(); } catch {} } ptys.clear(); }
-app.whenReady().then(() => { startServer(); waitServer(createWindow); });
+// 自检：node-pty 能否 spawn 任意进程（隔离"node-pty 没装好" vs "claude 命令问题"）
+function ptySelfTest() {
+  console.log('[selftest] node-pty 加载:', !!pty, ' headless:', !!HeadlessTerm, ' claude:', CLAUDE, ' shell:', process.env.SHELL);
+  if (!pty) return;
+  try {
+    const p = pty.spawn(process.env.SHELL || '/bin/zsh', ['-lic', 'echo PTY_OK; exit'], { name: 'xterm-256color', cols: 80, rows: 24, cwd: os.homedir(), env: { ...process.env } });
+    let buf = '';
+    p.onData(d => (buf += d));
+    p.onExit(() => console.log('[selftest] pty 退出，收到 PTY_OK =', buf.includes('PTY_OK'), '| 原始尾:', JSON.stringify(buf.slice(-80))));
+  } catch (e) { console.error('[selftest] node-pty 连 spawn 都失败：', e && e.message); }
+}
+app.whenReady().then(() => { startServer(); ptySelfTest(); waitServer(createWindow); });
 app.on('window-all-closed', () => { cleanup(); app.quit(); });   // 关窗即退出(含 mac)，不再常驻 dock 需强退
 app.on('before-quit', cleanup);
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
