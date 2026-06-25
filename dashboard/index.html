@@ -527,6 +527,12 @@ function setSpecFilter(f){ specFilter=f; renderSpecs(); }
 let groupByMod = (()=>{ try{return localStorage.getItem('specGroup')!=='flat';}catch{return true;} })();
 let collapsedModules=new Set();
 function toggleGroupMod(){ groupByMod=!groupByMod; try{localStorage.setItem('specGroup',groupByMod?'group':'flat');}catch{} renderSpecs(); }
+function toggleAllModules(){   // 一键收起/展开所有模块：全收起则展开，否则全收起
+  const keys=lastModOrder||[];
+  const allCol=keys.length && keys.every(k=>collapsedModules.has(k));
+  if(allCol) collapsedModules.clear(); else keys.forEach(k=>collapsedModules.add(k));
+  renderSpecs();
+}
 function toggleModule(ek){ const k=decodeURIComponent(ek); if(collapsedModules.has(k))collapsedModules.delete(k); else collapsedModules.add(k); renderSpecs(); }
 // —— 模块拖拽排序（顺序按项目存 localStorage）——
 let draggedMod=null, lastModOrder=[];
@@ -568,9 +574,11 @@ function renderSpecs(){
   const cnt={all:specs.length,await:0,doing:0,done:0};
   specs.forEach(sp=>cnt[specCat(sp)]++);
   const chips=[['all','全部'],['await','待验收'],['doing','进行中'],['done','已验收']];
+  const _mk=lastModOrder||[], _allCol=_mk.length && _mk.every(k=>collapsedModules.has(k));
   document.getElementById('spec-filter').innerHTML=chips.map(([k,lb])=>
     `<span class="fchip ${k==='await'?'warn':''} ${specFilter===k?'on':''}" onclick="setSpecFilter('${k}')">${lb}<span class="n">${cnt[k]}</span></span>`).join('')
-    + `<span class="gtgl ${groupByMod?'on':''}" onclick="toggleGroupMod()" title="按模块分组 / 平铺 切换"><i class="ti ti-layout-list"></i> 按模块</span>`;
+    + `<span class="gtgl ${groupByMod?'on':''}" onclick="toggleGroupMod()" title="按模块分组 / 平铺 切换"><i class="ti ti-layout-list"></i> 按模块</span>`
+    + (groupByMod?`<span class="gtgl" onclick="toggleAllModules()" title="一键收起/展开所有模块"><i class="ti ti-${_allCol?'chevrons-down':'chevrons-up'}"></i> ${_allCol?'展开全部':'收起全部'}</span>`:'');
   const list=specs.filter(sp=>specFilter==='all'||specCat(sp)===specFilter);
   const el=document.getElementById('specs');
   if(!list.length){ el.innerHTML=`<div class="sst" style="padding:8px 2px">该筛选下暂无 spec</div>`; }
