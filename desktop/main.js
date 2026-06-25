@@ -74,9 +74,17 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   if (!pty) return { ok: false, error: 'node-pty 未安装/未编译，先在 desktop/ 跑 npm install' };
   if (ptys.has(key)) return { ok: true };
   const args = [...EXTRA]; if (sessionId) args.push('--resume', sessionId);
+  const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
   let proc;
   try {
-    proc = pty.spawn(CLAUDE, args, { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } });
+    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } };
+    if (process.platform === 'win32') {
+      proc = pty.spawn(CLAUDE, args, opts);
+    } else {
+      // 经登录 shell exec：PATH/node/claude 的解析与你终端完全一致，避开 GUI 精简 PATH + nvm shebang(#!/usr/bin/env node) 导致的 posix_spawn 失败
+      const sh = process.env.SHELL || '/bin/zsh';
+      proc = pty.spawn(sh, ['-lic', 'exec ' + [CLAUDE, ...args].map(shq).join(' ')], opts);
+    }
   } catch (err) { return { ok: false, error: 'claude 启动失败：' + err.message }; }
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
