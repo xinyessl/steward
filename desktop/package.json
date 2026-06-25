@@ -27,6 +27,7 @@
     "appId": "com.xinyessl.steward",
     "productName": "Steward",
     "npmRebuild": true,
+    "afterPack": "build/afterPack.js",
     "asarUnpack": ["**/node_modules/node-pty/**"],
     "extraResources": [
       { "from": "../tools", "to": "steward/tools" },
