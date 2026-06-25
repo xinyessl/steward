@@ -119,6 +119,7 @@ ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key,
 function createWindow() {
   mainWin = new BrowserWindow({
     width: 1440, height: 900, title: 'Steward',
+    icon: path.join(__dirname, 'build', 'icon.png'),   // win/linux 任务栏图标(mac 用打包的 icns)
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });
   mainWin.loadURL(`http://127.0.0.1:${PORT}/`);

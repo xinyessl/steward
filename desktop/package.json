@@ -38,10 +38,12 @@
     "mac": {
       "target": ["dmg"],
       "category": "public.app-category.developer-tools",
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.png"
     },
     "win": {
-      "target": ["nsis"]
+      "target": ["nsis"],
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
