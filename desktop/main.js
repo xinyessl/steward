@@ -109,13 +109,24 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
 // 原生通知：窗口里 claude 停下等确认(false→true)时，弹系统通知告知你
 let activeKey = null;   // 渲染端正在看的 tab(activate 时上报)
 ipcMain.handle('pty-set-active', (e, { key }) => { activeKey = key; });
+// 从屏幕里抽出"claude 在问什么"，放进通知正文
+function extractAsk(screen) {
+  const lines = (screen || '').split('\n').map(l => l.trim())
+    .filter(l => l && !l.includes('⠀') && !l.includes('⏵⏵') && !/^\d+h\s/.test(l) && !/^[─\-]+$/.test(l));
+  const tail = lines.slice(-14);
+  for (let i = tail.length - 1; i >= 0; i--) if (/[?？]\s*$/.test(tail[i]) || /是否|确认|continue|proceed/i.test(tail[i])) return tail[i].slice(0, 70);   // 优先问句
+  const cur = [...tail].reverse().find(l => /^❯\s*\d/.test(l));   // 否则当前选中项
+  return ((cur || tail[tail.length - 1] || '').replace(/^❯\s*/, '')).slice(0, 70);
+}
 function notifyConfirm(r, key) {
   try {
     if (!Notification.isSupported()) return;
     if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused() && key === activeKey) return;   // 只有你正看着这个 tab 才不弹；其它情况(后台/别的 tab)都弹
     if (r.lastNotify && Date.now() - r.lastNotify < 20000) return;                                // 20s 冷却，防抖
     r.lastNotify = Date.now();
-    const n = new Notification({ title: 'Steward · 需要你确认', body: 'claude 正在等待你确认/选择' + (r.projectId ? '（' + r.projectId + '）' : '') + '——点开处理' });
+    const ask = r.term ? extractAsk(serialize(r.term)) : '';
+    const proj = r.projectId ? '【' + r.projectId + '】' : '';
+    const n = new Notification({ title: 'Steward · 需要你确认 ' + proj, body: ask ? ('claude：' + ask) : 'claude 正在等待你确认/选择 —— 点开处理' });
     n.on('click', () => { if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus(); } });
     n.show();
   } catch {}
