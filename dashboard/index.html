@@ -17,7 +17,9 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .tb .sp{flex:1}.tb .gen{font-size:11px;color:rgba(255,255,255,.45);white-space:nowrap;flex-shrink:0}
 .projsel{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;outline:none}.projsel option{color:#1F2733}
 .projwrap{display:flex;align-items:center;gap:8px;min-width:0}
-.projspread{display:flex;gap:6px;overflow-x:auto;max-width:62vw;padding-bottom:1px}
+.projspread{display:flex;gap:6px;overflow-x:auto;max-width:62vw;scrollbar-width:none}
+.tb::-webkit-scrollbar,.projspread::-webkit-scrollbar{height:0;width:0}
+.tb{scrollbar-width:none}
 .projchip{background:rgba(255,255,255,.10);color:#cfe0f0;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .projchip:hover{background:rgba(255,255,255,.18)}
 .projchip.on{background:#fff;color:#0F2744;border-color:#fff;font-weight:600}
