@@ -79,7 +79,8 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   try {
     const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } };
     if (process.platform === 'win32') {
-      proc = pty.spawn(CLAUDE, args, opts);
+      // claude 是 .cmd shim，ConPTY/CreateProcess 不能直接跑 .cmd → 经 cmd.exe /c 启动(按 PATHEXT 解析 .cmd)
+      proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', ['/c', ['claude', ...args].join(' ')], opts);
     } else {
       // 经登录 shell exec：PATH/node/claude 的解析与你终端完全一致，避开 GUI 精简 PATH + nvm shebang(#!/usr/bin/env node) 导致的 posix_spawn 失败
       const sh = process.env.SHELL || '/bin/zsh';
