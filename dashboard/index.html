@@ -2,10 +2,12 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- CSP(#26)：禁远程脚本(挡 CDN 投毒/注入的 <script src>)；marked/DOMPurify 本地随包；允许本机 ttyd iframe + 同源 SSE；图标字体仍走 jsdelivr(非可执行) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; frame-src 'self' http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'">
 <title>Steward 控制台</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script src="/dashboard/vendor/marked.min.js"></script>
+<script src="/dashboard/vendor/purify.min.js"></script>
 <style>
 :root{--c-pri:#1A6DBE;--c-pri-h:#155A9E;--c-pri-l:#E8F1FA;--c-pri-b:#B8D5EE;--c-t:#1F2733;--c-t2:#5A6573;--c-t3:#98A1AD;--c-bg:#F5F7FA;--c-bd:#E3E8EF;--c-bds:#CBD3DD;--c-ok:#2E8B57;--c-ok-l:#E7F2EC;--c-wn:#C8821A;--c-wn-l:#FBF1E0;--c-dg:#C0392B;--c-dg-l:#FBEAE8;--c-pu:#7A5BA6;--fn:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;--fe:"Inter",system-ui,sans-serif}
 *,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%}
@@ -61,8 +63,9 @@ body.resizing #term-host iframe{pointer-events:none}
 .nlabel{font-size:10px;color:var(--c-t3)}
 .conn{width:16px;height:2px;background:var(--c-bd);margin-top:-16px;flex-shrink:0}
 /* 右侧：对话/终端双模式 */
-.term-h{padding:10px 14px;border-bottom:1px solid var(--c-bd);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
-.term-h .rl{margin-left:12px;font-size:11.5px;color:var(--c-pri);cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-weight:500}
+.term-h{padding:10px 14px;border-bottom:1px solid var(--c-bd);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.term-h .rl{margin-left:12px;font-size:11.5px;color:var(--c-pri);cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-weight:500;white-space:nowrap;flex-shrink:0}
+.term-h .rmode-label{white-space:nowrap;flex-shrink:0}
 .rmode{display:flex;gap:2px;background:var(--c-bg);border:1px solid var(--c-bd);border-radius:8px;padding:2px}
 .rmode-label{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--c-t);margin-right:4px}
 .rm{padding:4px 12px;font-size:12px;border-radius:6px;cursor:pointer;color:var(--c-t2);font-weight:500}
@@ -1436,8 +1439,8 @@ document.addEventListener('click',e=>{
   try{ const w=localStorage.getItem('rightW'); if(w) document.documentElement.style.setProperty('--rw',w+'px'); }catch{}
   let drag=false,sx=0,sw=0;
   sp.addEventListener('mousedown',e=>{ drag=true; sx=e.clientX; sw=document.querySelector('.right').getBoundingClientRect().width; document.body.classList.add('resizing'); sp.classList.add('active'); e.preventDefault(); });
-  document.addEventListener('mousemove',e=>{ if(!drag)return; let w=sw-(e.clientX-sx); w=Math.max(320,Math.min(window.innerWidth-380,w)); document.documentElement.style.setProperty('--rw',w+'px'); });
-  document.addEventListener('mouseup',()=>{ if(!drag)return; drag=false; document.body.classList.remove('resizing'); sp.classList.remove('active'); try{ localStorage.setItem('rightW',Math.round(document.querySelector('.right').getBoundingClientRect().width)); }catch{} });
+  document.addEventListener('mousemove',e=>{ if(!drag)return; let w=sw-(e.clientX-sx); w=Math.max(320,Math.min(window.innerWidth-380,w)); document.documentElement.style.setProperty('--rw',w+'px'); window.dispatchEvent(new Event('resize')); });
+  document.addEventListener('mouseup',()=>{ if(!drag)return; drag=false; document.body.classList.remove('resizing'); sp.classList.remove('active'); try{ localStorage.setItem('rightW',Math.round(document.querySelector('.right').getBoundingClientRect().width)); }catch{} window.dispatchEvent(new Event('resize')); });
 })();
 </script>
 </body>

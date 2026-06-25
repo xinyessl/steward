@@ -2,7 +2,7 @@
 // 职责：① fork 现有 tools/server.mjs（spec/board/todo/feishu 等 API 原样复用）
 //      ② 开窗口加载控制台 ③ 用 node-pty 跑 claude（替代 ttyd+tmux，mac/win 原生）
 //      ④ 注入 native-term.js：在渲染端用 xterm.js + IPC 覆盖终端逻辑
-const { app, BrowserWindow, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -76,9 +76,20 @@ function isConfirm(s) {
   return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|↑\/↓|to select|to navigate|Do you want to|是否(继续|确认|要)|确认[?？]|\bProceed\?|press \w+ to (confirm|continue)|❯\s*\d+[.\)]|^\s*\d+[.:]\s+(Yes|No|是|否)/m.test(tail);
 }
 
+// cwd 白名单：只允许「不传(→ homedir 默认)」或「某个已纳管项目目录及其子目录」——
+// 即便渲染进程被 XSS 攻破，也无法在任意目录起 --dangerously-skip-permissions 的 claude(#26)
+function allowedCwd(cwd) {
+  if (!cwd) return true;
+  let real; try { real = fs.realpathSync(cwd); } catch { return false; }
+  const dataDir = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
+  let paths = [];
+  try { paths = (JSON.parse(fs.readFileSync(path.join(dataDir, 'projects.json'), 'utf8')).projects || []).map(p => p.path); } catch {}
+  return paths.some(p => { try { const rp = fs.realpathSync(p); return real === rp || real.startsWith(rp + path.sep); } catch { return false; } });
+}
 function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   if (!pty) return { ok: false, error: 'node-pty 未安装/未编译，先在 desktop/ 跑 npm install' };
   if (ptys.has(key)) return { ok: true };
+  if (!allowedCwd(cwd)) return { ok: false, error: 'cwd 不在已纳管项目范围内，已拒绝(安全)' };
   const args = [...EXTRA]; if (sessionId) args.push('--resume', sessionId);
   const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
   let proc;
@@ -156,10 +167,15 @@ function createWindow() {
   mainWin = new BrowserWindow({
     width: 1440, height: 900, title: 'Steward',
     icon: path.join(__dirname, 'build', 'icon.png'),   // win/linux 任务栏图标(mac 用打包的 icns)
-    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    // 显式写死安全选项(防配置漂移)：渲染端拿不到 require，只能经 preload 的 contextBridge —— #26
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   mainWin.on('closed', () => { mainWin = null; });   // 置空，pty 回调里的守卫即短路，不再往已销毁窗口发数据
-  mainWin.loadURL(`http://127.0.0.1:${PORT}/`);
+  // 导航锁定：禁止离开本地 origin；外链交系统浏览器 —— 防内容把窗口导航到攻击者站点后 preload 继续注入 stewardPty(#26)
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  mainWin.webContents.on('will-navigate', (e, u) => { try { if (new URL(u).origin !== ORIGIN) { e.preventDefault(); } } catch { e.preventDefault(); } });
+  mainWin.webContents.setWindowOpenHandler(({ url }) => { try { if (/^https?:/.test(url)) shell.openExternal(url); } catch {} return { action: 'deny' }; });
+  mainWin.loadURL(`${ORIGIN}/`);
   mainWin.webContents.on('did-finish-load', () => {
     try {
       const xtermCss = fs.readFileSync(require.resolve('@xterm/xterm/css/xterm.css'), 'utf8');

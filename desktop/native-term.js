@@ -26,6 +26,8 @@
     setTimeout(doFit, 60);
     term.onData(d => window.stewardPty.write(key, d));
     window.addEventListener('resize', doFit);
+    // 宿主尺寸一变就重排：覆盖 splitter 拖拽 / 专注切换 / 窗口缩放(不只依赖 window resize) —— #24
+    try { new ResizeObserver(() => doFit()).observe(el); } catch (e) {}
     terms[key] = { term, fit, el, doFit };
     return terms[key];
   }

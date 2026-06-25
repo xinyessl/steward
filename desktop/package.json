@@ -37,7 +37,7 @@
       { "from": "../CLAUDE.md", "to": "steward/CLAUDE.md" }
     ],
     "mac": {
-      "target": ["dmg"],
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
       "category": "public.app-category.developer-tools",
       "identity": null,
       "icon": "build/icon.png"
