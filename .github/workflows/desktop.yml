@@ -1,0 +1,50 @@
+name: 打包桌面客户端
+
+# 手动触发：Actions 页面点 "Run workflow"，选要打的平台
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "打哪个平台的包"
+        type: choice
+        default: both
+        options: [both, mac, win]
+
+jobs:
+  mac:
+    if: ${{ inputs.platform == 'mac' || inputs.platform == 'both' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: 安装依赖（含按 electron 版本重编 node-pty）
+        working-directory: desktop
+        run: npm install
+      - name: 打 dmg
+        working-directory: desktop
+        run: npm run dist:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steward-macos-dmg
+          path: desktop/dist/*.dmg
+          if-no-files-found: error
+
+  win:
+    if: ${{ inputs.platform == 'win' || inputs.platform == 'both' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: 安装依赖（含按 electron 版本重编 node-pty）
+        working-directory: desktop
+        run: npm install
+      - name: 打 exe（nsis 安装包）
+        working-directory: desktop
+        run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steward-windows-exe
+          path: desktop/dist/*.exe
+          if-no-files-found: error

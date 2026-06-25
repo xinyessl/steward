@@ -27,17 +27,14 @@
     "appId": "com.xinyessl.steward",
     "productName": "Steward",
     "npmRebuild": true,
-    "files": [
-      "main.js",
-      "preload.js",
-      "native-term.js",
-      "../tools/**",
-      "../dashboard/**",
-      "../templates/**",
-      "../lessons.md",
-      "../CLAUDE.md"
+    "asarUnpack": ["**/node_modules/node-pty/**"],
+    "extraResources": [
+      { "from": "../tools", "to": "steward/tools" },
+      { "from": "../dashboard", "to": "steward/dashboard" },
+      { "from": "../templates", "to": "steward/templates" },
+      { "from": "../lessons.md", "to": "steward/lessons.md" },
+      { "from": "../CLAUDE.md", "to": "steward/CLAUDE.md" }
     ],
-    "extraMetadata": { "main": "main.js" },
     "mac": {
       "target": ["dmg"],
       "category": "public.app-category.developer-tools",

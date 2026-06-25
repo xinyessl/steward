@@ -17,10 +17,20 @@ npm start            # 开发模式启动客户端
 前置：本机已装 **claude CLI 并登录**（客户端直接调它）。Node 用来 `npm install`。
 
 ## 打包安装包（不签名·内部自用）
+
+**一套代码，两种打法:**
+
+### A. 用 GitHub Actions 打（推荐，不用自己有 Windows 机器）
+GitHub → **Actions** → 「打包桌面客户端」→ **Run workflow** → 选 `both / mac / win` → 跑完在该次运行的 **Artifacts** 下载 `steward-macos-dmg` / `steward-windows-exe`。
+- mac 在 macos runner 打 dmg，win 在 windows runner 打 exe，**node-pty 各自原生重编**，互不影响。
+- 配置见 `.github/workflows/desktop.yml`。
+
+### B. 本地打（只能打当前系统的）
 ```bash
-npm run dist:mac     # → dist/*.dmg
-npm run dist:win     # → dist/*.exe（在 Windows 上打，或配好交叉打包）
+npm run dist:mac     # 在 mac 上 → dist/*.dmg
+npm run dist:win     # 在 Windows 上 → dist/*.exe
 ```
+
 未签名：首次打开 mac 右键「打开」、Windows 点「仍要运行」。要对外分发再补签名（Apple 开发者号 + Windows 证书）。
 
 ## 当前状态（v0.1·首版，需首次运行联调）

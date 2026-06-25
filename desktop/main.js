@@ -9,7 +9,8 @@ const os = require('node:os');
 const http = require('node:http');
 const { fork, spawnSync } = require('node:child_process');
 
-const ROOT = path.resolve(__dirname, '..');           // steward 仓库根
+// 开发：desktop 的上级=仓库根；打包后：随 app 一起放进 resources/steward（见 package.json extraResources）
+const ROOT = app.isPackaged ? path.join(process.resourcesPath, 'steward') : path.resolve(__dirname, '..');
 const SERVER = path.join(ROOT, 'tools', 'server.mjs');
 const PORT = process.env.PORT || 5180;   // 桌面端用 5180，避开 web 版的 5178（同时开也不撞）
 let serverProc = null, mainWin = null;
@@ -122,7 +123,8 @@ function createWindow() {
   });
 }
 
+function cleanup() { try { serverProc && serverProc.kill(); } catch {} for (const [, r] of ptys) { try { r.proc.kill(); } catch {} } ptys.clear(); }
 app.whenReady().then(() => { startServer(); waitServer(createWindow); });
-app.on('window-all-closed', () => { try { serverProc && serverProc.kill(); } catch {} for (const [, r] of ptys) try { r.proc.kill(); } catch {} if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => { try { serverProc && serverProc.kill(); } catch {} for (const [, r] of ptys) try { r.proc.kill(); } catch {} });
+app.on('window-all-closed', () => { cleanup(); app.quit(); });   // 关窗即退出(含 mac)，不再常驻 dock 需强退
+app.on('before-quit', cleanup);
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
