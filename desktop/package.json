@@ -1,0 +1,54 @@
+{
+  "name": "steward-desktop",
+  "productName": "Steward",
+  "version": "0.1.0",
+  "description": "Steward 多项目研发控制台 · 桌面客户端（macOS / Windows 原生）",
+  "main": "main.js",
+  "author": "xinyessl",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/headless": "^5.5.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.xinyessl.steward",
+    "productName": "Steward",
+    "npmRebuild": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "native-term.js",
+      "../tools/**",
+      "../dashboard/**",
+      "../templates/**",
+      "../lessons.md",
+      "../CLAUDE.md"
+    ],
+    "extraMetadata": { "main": "main.js" },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
