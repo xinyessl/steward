@@ -92,8 +92,9 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
   ptys.set(key, rec);
-  proc.onData(d => { if (term) term.write(d); if (mainWin) mainWin.webContents.send('pty-data', { key, data: d }); });
-  proc.onExit(() => { ptys.delete(key); if (mainWin) mainWin.webContents.send('pty-exit', { key }); });
+  const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
+  proc.onData(d => { if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });
+  proc.onExit(() => { ptys.delete(key); sendWin('pty-exit', { key }); });
   return { ok: true };
 }
 
@@ -122,6 +123,7 @@ function createWindow() {
     icon: path.join(__dirname, 'build', 'icon.png'),   // win/linux 任务栏图标(mac 用打包的 icns)
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });
+  mainWin.on('closed', () => { mainWin = null; });   // 置空，pty 回调里的守卫即短路，不再往已销毁窗口发数据
   mainWin.loadURL(`http://127.0.0.1:${PORT}/`);
   mainWin.webContents.on('did-finish-load', () => {
     try {
