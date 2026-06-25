@@ -35,7 +35,11 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .splitter:hover,.splitter.active{background:var(--c-pri-b)}
 body.resizing{cursor:col-resize;user-select:none}
 body.resizing #term-host iframe{pointer-events:none}
-.left{overflow-y:auto;padding:18px 20px}
+.left{display:flex;flex-direction:column;padding:18px 20px;min-height:0;overflow:hidden}
+#v-board{display:flex;flex-direction:column;flex:1;min-height:0}
+#specs{flex:1;min-height:0;overflow:auto}
+.wrap.focus{grid-template-columns:1fr}
+.wrap.focus .left,.wrap.focus .splitter{display:none}
 .right{border-left:1px solid var(--c-bd);background:#fff;display:flex;flex-direction:column;min-height:0;position:relative}
 .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
 .kpi{background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:11px 13px}
@@ -352,6 +356,7 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="right">
     <div class="term-h">
       <span class="rmode-label"><i class="ti ti-terminal-2"></i> 终端</span>
+      <span class="rl" id="t-focus" onclick="toggleFocus()" title="折叠左侧看板，终端全宽（专注）"><i class="ti ti-layout-sidebar-left-collapse"></i> <span id="t-focus-tx">专注</span></span>
       <span class="rl" id="t-cmd" onclick="toggleCmds()"><i class="ti ti-command"></i> 命令</span>
       <span class="rl" id="t-new" onclick="newWindow()"><i class="ti ti-plus"></i> 新窗口</span>
       <span class="rl" id="t-hist" onclick="toggleHistory()"><i class="ti ti-history"></i> 历史对话</span>
@@ -942,17 +947,24 @@ function renderEmptyCta(){   // 0 项目时给引导 CTA（#5）
   if(!PROJECTS.length){ el.style.display='block'; el.innerHTML='<div class="ec-t">还没有纳管任何项目</div><div class="ec-d">导入你的第一个项目开始：<b>老项目</b>（已有代码）/ <b>绿地</b>（PRD+原型）/ <b>Git 仓库</b>。</div><button class="abtn" onclick="openAddProject()"><i class="ti ti-folder-plus"></i> 新增项目</button>'; }
   else el.style.display='none';
 }
-async function loadHealth(){   // 上手就绪条（#5）：工具就绪即时显示；claude 登录点 chip 探测
+async function loadHealth(force){   // 就绪条：全绿时收起成一个小条(点开看详情)，出问题/未授权才展开
   const bar=document.getElementById('readybar'); if(!bar)return;
   try{
     const h=await (await fetch('/api/health')).json();
     const chip=(ok,label,hint)=>`<span class="rchip ${ok?'ok':'bad'}" title="${(hint||'').replace(/"/g,'')}">${ok?'✓':'✗'} ${label}</span>`;
+    const notifyOk=!('Notification' in window)||Notification.permission==='granted';
+    const allGreen=h.claude.found && h.ttyd && h.tmux && notifyOk;   // #14：核心工具+通知都就绪
+    if(allGreen && !force){
+      bar.innerHTML='<span class="rchip ok clk" title="环境就绪，点开看 claude / ttyd / tmux 详情" onclick="loadHealth(true)">✓ 环境就绪</span>';
+      bar.style.display='flex'; return;
+    }
     bar.innerHTML='<span class="rk">就绪：</span>'
       +`<span class="rchip clk ${h.claude.found?'ok':'bad'}" title="${(h.claude.bin||'').replace(/"/g,'')}" onclick="checkLogin(this)">${h.claude.found?'✓ claude（点测登录）':'✗ claude 未找到'}</span>`
       +chip(h.ttyd,'ttyd', h.ttyd?'内嵌终端可用':'内嵌终端不可用(必装)。装法：mac brew install ttyd / WSL sudo apt install ttyd，后重启')
       +chip(h.tmux,'tmux', h.tmux?'会话持久化可用':'tmux 可选——缺它控制台仍可用，仅失去刷新回放整屏/忙闲状态灯/滚动复制。装法：mac brew install tmux / WSL sudo apt install tmux，后重启')
       +notifyChip()
-      +`<span class="rk2">node ${esc(h.node)}</span>`;
+      +`<span class="rk2">node ${esc(h.node)}</span>`
+      +(allGreen?`<span class="rchip ok clk" title="收起" onclick="loadHealth()">▴ 收起</span>`:'');
     bar.style.display='flex';
   }catch(e){}
 }
@@ -986,6 +998,15 @@ function applyProjView(){
   if(tg){ tg.innerHTML = spread?'<i class="ti ti-chevron-down"></i>':'<i class="ti ti-layout-grid"></i>'; tg.title = spread?'切换为下拉':'切换为全部铺开'; }
 }
 function toggleProjView(){ projViewMode = projViewMode==='spread'?'select':'spread'; try{localStorage.setItem('projView',projViewMode);}catch{} renderProjSpread(); applyProjView(); }
+// #12 专注模式：折叠左侧看板，终端全宽
+let focusMode=(()=>{ try{return localStorage.getItem('focusMode')==='1';}catch{return false;} })();
+function applyFocus(){
+  const w=document.querySelector('.wrap'); if(w) w.classList.toggle('focus',focusMode);
+  const tx=document.getElementById('t-focus-tx'); if(tx) tx.textContent=focusMode?'展开看板':'专注';
+  const ic=document.querySelector('#t-focus i'); if(ic) ic.className='ti '+(focusMode?'ti-layout-sidebar-left-expand':'ti-layout-sidebar-left-collapse');
+  setTimeout(()=>window.dispatchEvent(new Event('resize')),80);   // 触发终端(xterm/ttyd)按新宽度重排
+}
+function toggleFocus(){ focusMode=!focusMode; try{localStorage.setItem('focusMode',focusMode?'1':'0');}catch{} applyFocus(); }
 let attnByProject={};   // {项目id: 有几个 CLI 窗口在等你确认}——驱动顶部项目角标（不是 spec 待处理数）
 function renderProjSpread(){
   const sp=document.getElementById('proj-spread'); if(!sp)return;
@@ -1388,6 +1409,7 @@ function toggleTodoPop(){
 }
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); loadTodos(); });
 loadHealth();
+applyFocus();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
 // 弹窗外部点击即关闭：历史对话 / 通知铃铛
 document.addEventListener('click',e=>{
