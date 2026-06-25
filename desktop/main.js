@@ -18,7 +18,9 @@ let serverProc = null, mainWin = null;
 // ---------- 1) 起后端（electron 当 node 跑 server.mjs，所有非终端 API 原样可用） ----------
 function startServer() {
   serverProc = fork(SERVER, [], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PORT: String(PORT), STEWARD_NATIVE: '1' },
+    // 注入登录 shell 的真实 PATH：否则 GUI 精简 PATH 找不到 nvm 里的 claude，
+    // health 探活会误报"未登录"，且 /accept、合并 spec 等后端调 claude 的功能也会失败
+    env: { ...process.env, PATH: SHELL_PATH || process.env.PATH, ELECTRON_RUN_AS_NODE: '1', PORT: String(PORT), STEWARD_NATIVE: '1' },
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   });
   serverProc.on('exit', c => console.log('[server] exited', c));

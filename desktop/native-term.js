@@ -8,6 +8,7 @@
   if (!XTerm) { console.error('xterm 未注入'); return; }
   const host = () => document.getElementById('term-host');
   const terms = {};            // key -> {term, fit, el, doFit}
+  const projWins = {};         // projectId -> [{key,label}]：每个项目各自一组窗口，切换不丢
   let seq = 0;
   const mkKey = () => 'n' + Date.now().toString(36) + (seq++);
 
@@ -94,11 +95,10 @@
     const msg = document.getElementById('term-msg');
     if (!PROJECT) { if (msg) { msg.style.display = 'grid'; msg.innerHTML = '还没有纳管任何项目。点右上角 <b>「新增项目」</b>。'; } return; }
     if (msg) msg.style.display = 'none';
-    if (termBuiltFor === PROJECT && Object.keys(terms).length) return;
-    document.querySelectorAll('#term-host .nterm').forEach(el => el.remove());
-    Object.keys(terms).forEach(k => delete terms[k]);
-    windows = []; activeIdx = -1; renderTabs();
-    await newWindow();
+    windows = projWins[PROJECT] || (projWins[PROJECT] = []);            // 取该项目的窗口组（不销毁其它项目的 pty/DOM）
+    document.querySelectorAll('#term-host .nterm').forEach(el => { el.style.display = 'none'; });   // 先全隐藏，activate 再显当前项目的
+    if (windows.length) { activeIdx = -1; renderTabs(); activate(windows.length - 1); }   // 已有窗口：恢复显示
+    else { activeIdx = -1; renderTabs(); await newWindow(); }                              // 该项目还没开过：开一个
     termBuiltFor = PROJECT;
   };
 
