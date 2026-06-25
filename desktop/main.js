@@ -135,6 +135,18 @@ function createWindow() {
 }
 
 function cleanup() { try { serverProc && serverProc.kill(); } catch {} for (const [, r] of ptys) { try { r.proc.kill(); } catch {} } ptys.clear(); }
+// node-pty 1.x 预编译包的 spawn-helper 常被 npm 解包丢掉可执行位 → spawn 必 posix_spawn failed。
+// 启动时给它补 +x（dev 与打包后都自愈；打包后 node-pty 走 asarUnpack 在真实磁盘上，可 chmod）。
+function fixSpawnHelper() {
+  try {
+    const root = path.resolve(path.dirname(require.resolve('node-pty')), '..');
+    const pb = path.join(root, 'prebuilds');
+    for (const d of fs.readdirSync(pb)) {
+      const h = path.join(pb, d, 'spawn-helper');
+      try { if (fs.existsSync(h)) fs.chmodSync(h, 0o755); } catch {}
+    }
+  } catch (e) { console.error('[pty] 修 spawn-helper 权限失败：', e && e.message); }
+}
 // 自检：node-pty 能否 spawn 任意进程（隔离"node-pty 没装好" vs "claude 命令问题"）
 function ptySelfTest() {
   console.log('[selftest] node-pty 加载:', !!pty, ' headless:', !!HeadlessTerm, ' claude:', CLAUDE, ' shell:', process.env.SHELL);
@@ -146,7 +158,7 @@ function ptySelfTest() {
     p.onExit(() => console.log('[selftest] pty 退出，收到 PTY_OK =', buf.includes('PTY_OK'), '| 原始尾:', JSON.stringify(buf.slice(-80))));
   } catch (e) { console.error('[selftest] node-pty 连 spawn 都失败：', e && e.message); }
 }
-app.whenReady().then(() => { startServer(); ptySelfTest(); waitServer(createWindow); });
+app.whenReady().then(() => { fixSpawnHelper(); startServer(); ptySelfTest(); waitServer(createWindow); });
 app.on('window-all-closed', () => { cleanup(); app.quit(); });   // 关窗即退出(含 mac)，不再常驻 dock 需强退
 app.on('before-quit', cleanup);
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
