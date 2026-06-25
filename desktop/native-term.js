@@ -53,6 +53,7 @@
   window.activate = function (idx) {
     if (idx < 0 || idx >= windows.length) return; activeIdx = idx;
     document.querySelectorAll('#term-host .nterm').forEach(el => { el.style.display = (el.dataset.key === windows[idx].key) ? 'block' : 'none'; });
+    try { window.stewardPty.setActive(windows[idx].key); } catch (e) {}   // 上报当前看的 tab → 主进程据此决定要不要弹确认通知
     const t = terms[windows[idx].key]; if (t) setTimeout(() => { t.doFit(); t.term.focus(); }, 30);
     renderTabs();
   };

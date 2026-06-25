@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('stewardPty', {
   write: (key, data) => ipcRenderer.invoke('pty-write', { key, data }),
   resize: (key, cols, rows) => ipcRenderer.invoke('pty-resize', { key, cols, rows }),
   kill: (key) => ipcRenderer.invoke('pty-kill', { key }),
+  setActive: (key) => ipcRenderer.invoke('pty-set-active', { key }),
   capture: (key) => ipcRenderer.invoke('pty-capture', { key }),
   states: () => ipcRenderer.invoke('pty-states'),
   onData: (cb) => ipcRenderer.on('pty-data', (e, m) => cb(m)),

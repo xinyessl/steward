@@ -70,7 +70,11 @@ function serialize(term) {
 }
 // 与 server.mjs 同套启发式：判忙/判等确认/抽话题与在干啥
 function sig(s) { return s.split('\n').filter(l => !l.includes('⠀') && !l.includes('⏵⏵') && !/^\s*\d+h\s/.test(l) && !/^[\s─-]*$/.test(l)).join('\n'); }
-function isConfirm(s) { return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|↑\/↓ to select|Do you want to (proceed|continue)|是否(继续|确认|要)|确认[?？]|\bProceed\?/m.test(s.split('\n').slice(-22).join('\n')); }
+function isConfirm(s) {
+  const tail = s.split('\n').slice(-25).join('\n');
+  // y/n 确认 | 选择菜单(❯ 1. / Enter to select / ↑↓ navigate) | 是否继续/确认 等
+  return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|↑\/↓|to select|to navigate|Do you want to|是否(继续|确认|要)|确认[?？]|\bProceed\?|press \w+ to (confirm|continue)|❯\s*\d+[.\)]|^\s*\d+[.:]\s+(Yes|No|是|否)/m.test(tail);
+}
 
 function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   if (!pty) return { ok: false, error: 'node-pty 未安装/未编译，先在 desktop/ 跑 npm install' };
@@ -103,26 +107,28 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
 
 // 周期性算忙/闲/确认（渲染端轮询取）
 // 原生通知：窗口里 claude 停下等确认(false→true)时，弹系统通知告知你
-function notifyConfirm(r) {
+let activeKey = null;   // 渲染端正在看的 tab(activate 时上报)
+ipcMain.handle('pty-set-active', (e, { key }) => { activeKey = key; });
+function notifyConfirm(r, key) {
   try {
     if (!Notification.isSupported()) return;
-    if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused()) return;   // 你正盯着 App 就不弹(tab 上有状态灯)
-    if (r.lastNotify && Date.now() - r.lastNotify < 30000) return;          // 30s 冷却，防抖
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused() && key === activeKey) return;   // 只有你正看着这个 tab 才不弹；其它情况(后台/别的 tab)都弹
+    if (r.lastNotify && Date.now() - r.lastNotify < 20000) return;                                // 20s 冷却，防抖
     r.lastNotify = Date.now();
-    const n = new Notification({ title: 'Steward · 需要你确认', body: 'claude 正在等待确认' + (r.projectId ? '（' + r.projectId + '）' : '') + '——点开处理' });
+    const n = new Notification({ title: 'Steward · 需要你确认', body: 'claude 正在等待你确认/选择' + (r.projectId ? '（' + r.projectId + '）' : '') + '——点开处理' });
     n.on('click', () => { if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus(); } });
     n.show();
   } catch {}
 }
 setInterval(() => {
-  for (const [, r] of ptys) {
+  for (const [key, r] of ptys) {
     if (!r.term) continue;
     const screen = serialize(r.term); const s = sig(screen);
     if (r.lastSig !== undefined) { const busy = s !== r.lastSig; if (r.busy && !busy) r.done = true; r.busy = busy; }
     r.lastSig = s;
     const wasConfirm = r.confirm;
     r.confirm = !r.busy && isConfirm(screen);
-    if (!wasConfirm && r.confirm) notifyConfirm(r);   // 刚进入"等确认"→ 通知
+    if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
 }, 1200);
 
