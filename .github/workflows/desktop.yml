@@ -1,6 +1,6 @@
 name: 打包桌面客户端
 
-# 手动触发：Actions 页面点 "Run workflow"，选要打的平台
+# 两种触发：① Actions 手动跑(选平台) ② 推 v* tag → 自动打 mac+win 并发 Release
 on:
   workflow_dispatch:
     inputs:
@@ -9,15 +9,25 @@ on:
         type: choice
         default: both
         options: [both, mac, win]
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
 
 jobs:
   mac:
-    if: ${{ inputs.platform == 'mac' || inputs.platform == 'both' }}
+    if: ${{ github.event_name == 'push' || inputs.platform == 'mac' || inputs.platform == 'both' }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: 用 tag 设版本号
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: desktop
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
       - name: 安装依赖（含按 electron 版本重编 node-pty）
         working-directory: desktop
         run: npm install
@@ -31,12 +41,17 @@ jobs:
           if-no-files-found: error
 
   win:
-    if: ${{ inputs.platform == 'win' || inputs.platform == 'both' }}
+    if: ${{ github.event_name == 'push' || inputs.platform == 'win' || inputs.platform == 'both' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: 用 tag 设版本号
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: desktop
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
       - name: 安装依赖（含按 electron 版本重编 node-pty）
         working-directory: desktop
         run: npm install
@@ -48,3 +63,20 @@ jobs:
           name: steward-windows-exe
           path: desktop/dist/*.exe
           if-no-files-found: error
+
+  release:
+    needs: [mac, win]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: 发布 Release（附 dmg / exe）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            artifacts/*/*.dmg artifacts/*/*.exe \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Steward $GITHUB_REF_NAME" \
+            --generate-notes
