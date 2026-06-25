@@ -121,7 +121,8 @@ function extractAsk(screen) {
 function notifyConfirm(r, key) {
   try {
     if (!Notification.isSupported()) return;
-    if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused() && key === activeKey) return;   // 只有你正看着这个 tab 才不弹；其它情况(后台/别的 tab)都弹
+    // 窗口在前台(聚焦且没最小化)= 你正看着，不弹；最小化 / 后台 / 失焦 → 弹
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused() && !mainWin.isMinimized()) return;
     if (r.lastNotify && Date.now() - r.lastNotify < 20000) return;                                // 20s 冷却，防抖
     r.lastNotify = Date.now();
     const ask = r.term ? extractAsk(serialize(r.term)) : '';

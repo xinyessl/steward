@@ -26,6 +26,7 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .projchip.dragover{outline:2px dashed #9ec5ec;outline-offset:2px}
 .projchip.dragging{opacity:.45}
 .pj-badge{background:var(--c-dg);color:#fff;border-radius:8px;font-size:10px;font-weight:700;min-width:15px;height:15px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe);line-height:1}
+.pj-dot{width:7px;height:7px;border-radius:50%;background:var(--c-dg);display:inline-block;flex-shrink:0;margin-left:1px}
 .projtgl{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer;flex-shrink:0}.projtgl:hover{background:rgba(255,255,255,.2)}
 .tb .rf{background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px;display:flex;gap:5px;align-items:center;white-space:nowrap;flex-shrink:0}.tb .rf:hover{background:rgba(255,255,255,.18)}
 .wrap{flex:1;display:grid;grid-template-columns:1fr 6px var(--rw,480px);min-height:0}
@@ -988,12 +989,15 @@ function toggleProjView(){ projViewMode = projViewMode==='spread'?'select':'spre
 let attnByProject={};   // {项目id: 有几个 CLI 窗口在等你确认}——驱动顶部项目角标（不是 spec 待处理数）
 function renderProjSpread(){
   const sp=document.getElementById('proj-spread'); if(!sp)return;
-  sp.innerHTML=PROJECTS.map(p=>{ const n=attnByProject[p.id]||0; return `<span class="projchip ${p.id===PROJECT?'on':''}" draggable="true" ondragstart="projDragStart(event,'${jss(p.id)}')" ondragover="projDragOver(event)" ondragleave="projDragLeave(event)" ondrop="projDrop(event,'${jss(p.id)}')" ondragend="projDragEnd(event)" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}${n?` · ${n} 个 CLI 窗口在等你确认`:''}（可拖拽排序；删除用右侧 🗑️）">${esc(p.name)}${n?`<span class="pj-badge" title="${n} 个 CLI 窗口在等你确认">${n}</span>`:''}</span>`; }).join('');
+  sp.innerHTML=PROJECTS.map(p=>{ const n=attnByProject[p.id]||0; return `<span class="projchip ${p.id===PROJECT?'on':''}" draggable="true" ondragstart="projDragStart(event,'${jss(p.id)}')" ondragover="projDragOver(event)" ondragleave="projDragLeave(event)" ondrop="projDrop(event,'${jss(p.id)}')" ondragend="projDragEnd(event)" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}${n?` · 有窗口在等你确认`:''}（可拖拽排序；删除用右侧 🗑️）">${esc(p.name)}${n?`<span class="pj-dot" title="有窗口在等你确认"></span>`:''}</span>`; }).join('');
 }
-function applyProjBadges(){   // CLI 等确认数变化时刷新：铺开 chip 重渲染 + 下拉选项加 (N)
+let _badgeSig='';
+function applyProjBadges(){   // 仅当"等确认"分布变化时才重渲，避免每次轮询闪烁
+  const sig=JSON.stringify(attnByProject)+'|'+PROJECT+'|'+PROJECTS.map(p=>p.id+':'+p.name).join(',');
+  if(sig===_badgeSig)return; _badgeSig=sig;
   renderProjSpread();
   const sel=document.getElementById('proj');
-  if(sel) [...sel.options].forEach(o=>{ const p=PROJECTS.find(x=>x.id===o.value); if(!p)return; const n=attnByProject[o.value]||0; o.textContent=p.name+(n?` (${n})`:''); });
+  if(sel) [...sel.options].forEach(o=>{ const p=PROJECTS.find(x=>x.id===o.value); if(!p)return; const n=attnByProject[o.value]||0; o.textContent=p.name+(n?' ●':''); });
 }
 // 项目 chips 拖拽排序（顺序持久化到 projects.json）
 let draggedProj=null;
