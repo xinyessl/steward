@@ -32,13 +32,29 @@ let pty, HeadlessTerm;
 try { pty = require('node-pty'); } catch (e) { console.error('node-pty 未就绪：', e.message); }
 try { HeadlessTerm = require('@xterm/headless').Terminal; } catch {}
 
+// macOS GUI 应用拿到的是精简 PATH（不含 nvm/homebrew 等）→ 用登录 shell 取真实 PATH
+function loginPath() {
+  if (process.platform === 'win32') return process.env.PATH || '';
+  try {
+    const sh = process.env.SHELL || '/bin/zsh';
+    const o = (spawnSync(sh, ['-lic', 'echo __SP__:$PATH'], { encoding: 'utf8', timeout: 6000 }).stdout || '');
+    const m = o.match(/__SP__:(.+)/);
+    if (m && m[1].includes('/')) return m[1].trim();
+  } catch {}
+  return process.env.PATH || '';
+}
+const SHELL_PATH = loginPath();
 function findClaude() {
-  const cmd = process.platform === 'win32' ? 'where' : 'which';
-  try { const o = (spawnSync(cmd, ['claude'], { encoding: 'utf8' }).stdout || '').split(/\r?\n/)[0].trim(); if (o) return o; } catch {}
+  const exes = process.platform === 'win32' ? ['claude.cmd', 'claude.exe', 'claude'] : ['claude'];
+  for (const dir of SHELL_PATH.split(path.delimiter)) {
+    if (!dir) continue;
+    for (const e of exes) { const p = path.join(dir, e); try { if (fs.existsSync(p)) return p; } catch {} }
+  }
   for (const c of ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', path.join(os.homedir(), '.local/bin/claude')]) if (fs.existsSync(c)) return c;
   return 'claude';
 }
 const CLAUDE = findClaude();
+console.log('[steward] claude =', CLAUDE);
 const EXTRA = (process.env.CLAUDE_EXTRA || '--dangerously-skip-permissions').split(' ').filter(Boolean);
 
 const ptys = new Map();   // key -> { proc, term(headless), lastSig, busy, confirm, title, activity, projectId, cwd }
@@ -59,7 +75,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   const args = [...EXTRA]; if (sessionId) args.push('--resume', sessionId);
   let proc;
   try {
-    proc = pty.spawn(CLAUDE, args, { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env } });
+    proc = pty.spawn(CLAUDE, args, { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } });
   } catch (err) { return { ok: false, error: 'claude 启动失败：' + err.message }; }
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
