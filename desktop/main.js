@@ -2,7 +2,7 @@
 // 职责：① fork 现有 tools/server.mjs（spec/board/todo/feishu 等 API 原样复用）
 //      ② 开窗口加载控制台 ③ 用 node-pty 跑 claude（替代 ttyd+tmux，mac/win 原生）
 //      ④ 注入 native-term.js：在渲染端用 xterm.js + IPC 覆盖终端逻辑
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -102,13 +102,27 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
 }
 
 // 周期性算忙/闲/确认（渲染端轮询取）
+// 原生通知：窗口里 claude 停下等确认(false→true)时，弹系统通知告知你
+function notifyConfirm(r) {
+  try {
+    if (!Notification.isSupported()) return;
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused()) return;   // 你正盯着 App 就不弹(tab 上有状态灯)
+    if (r.lastNotify && Date.now() - r.lastNotify < 30000) return;          // 30s 冷却，防抖
+    r.lastNotify = Date.now();
+    const n = new Notification({ title: 'Steward · 需要你确认', body: 'claude 正在等待确认' + (r.projectId ? '（' + r.projectId + '）' : '') + '——点开处理' });
+    n.on('click', () => { if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus(); } });
+    n.show();
+  } catch {}
+}
 setInterval(() => {
   for (const [, r] of ptys) {
     if (!r.term) continue;
     const screen = serialize(r.term); const s = sig(screen);
     if (r.lastSig !== undefined) { const busy = s !== r.lastSig; if (r.busy && !busy) r.done = true; r.busy = busy; }
     r.lastSig = s;
+    const wasConfirm = r.confirm;
     r.confirm = !r.busy && isConfirm(screen);
+    if (!wasConfirm && r.confirm) notifyConfirm(r);   // 刚进入"等确认"→ 通知
   }
 }, 1200);
 

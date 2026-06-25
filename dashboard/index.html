@@ -496,7 +496,9 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;',
 // 放进 onclick="f('…')" 的 JS 字符串实参：先做 JS 转义(反斜杠/单引号/换行)，再 HTML 转义——运行时浏览器先解 HTML 实体、JS 再安全解析。
 function jss(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n]+/g,' '));}
 // markdown 渲染统一走这里：marked 解析后用 DOMPurify 消毒，挡住 <script>/onerror 等存储型 XSS。
-function mdHtml(t){const h=window.marked?marked.parse(String(t==null?'':t)):('<pre>'+esc(t)+'</pre>');return window.DOMPurify?DOMPurify.sanitize(h):h;}
+// 去掉 markdown 标题行的装饰 emoji(✅🔄📚 等)——标题当"图标"用 emoji 不好看；正文 emoji 保留
+function stripHeadingEmoji(md){const E=/[\p{Extended_Pictographic}️‍⃣]/gu;return String(md==null?'':md).split('\n').map(l=>/^\s{0,3}#{1,6}\s/.test(l)?l.replace(E,'').replace(/^(\s{0,3}#{1,6})\s+/,'$1 ').replace(/\s+$/,''):l).join('\n');}
+function mdHtml(t){const src=stripHeadingEmoji(t);const h=window.marked?marked.parse(src):('<pre>'+esc(src)+'</pre>');return window.DOMPurify?DOMPurify.sanitize(h):h;}
 let PROJECT='';
 let PROJECTS=[];
 let boardData=null, specFilter='all';   // 验收筛选：all/await(待验收)/doing(进行中)/done(已验收)
