@@ -141,14 +141,20 @@ function cleanup() { try { serverProc && serverProc.kill(); } catch {} for (cons
 // node-pty 1.x 预编译包的 spawn-helper 常被 npm 解包丢掉可执行位 → spawn 必 posix_spawn failed。
 // 启动时给它补 +x（dev 与打包后都自愈；打包后 node-pty 走 asarUnpack 在真实磁盘上，可 chmod）。
 function fixSpawnHelper() {
-  try {
-    const root = path.resolve(path.dirname(require.resolve('node-pty')), '..');
+  const roots = new Set();
+  try { roots.add(path.resolve(path.dirname(require.resolve('node-pty')), '..')); } catch {}
+  if (app.isPackaged) roots.add(path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty'));   // 打包后 node-pty 在 asar.unpacked
+  for (const r of [...roots]) if (r.includes(`app.asar${path.sep}`)) roots.add(r.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`));   // require.resolve 可能给 asar 路径，换成 unpacked
+  let fixed = 0;
+  for (const root of roots) {
     const pb = path.join(root, 'prebuilds');
-    for (const d of fs.readdirSync(pb)) {
+    let dirs = []; try { dirs = fs.readdirSync(pb); } catch { continue; }
+    for (const d of dirs) {
       const h = path.join(pb, d, 'spawn-helper');
-      try { if (fs.existsSync(h)) fs.chmodSync(h, 0o755); } catch {}
+      try { if (fs.existsSync(h)) { fs.chmodSync(h, 0o755); fixed++; } } catch {}
     }
-  } catch (e) { console.error('[pty] 修 spawn-helper 权限失败：', e && e.message); }
+  }
+  console.log('[pty] spawn-helper chmod 数量:', fixed, '| roots:', [...roots].join(' ; '));
 }
 // 自检：node-pty 能否 spawn 任意进程（隔离"node-pty 没装好" vs "claude 命令问题"）
 function ptySelfTest() {
