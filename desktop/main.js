@@ -161,6 +161,7 @@ ipcMain.handle('pty-resize', (e, { key, cols, rows }) => { const r = ptys.get(ke
 ipcMain.handle('pty-kill', (e, { key }) => { const r = ptys.get(key); if (r) { try { r.proc.kill(); } catch {} ptys.delete(key); } });
 ipcMain.handle('pty-capture', (e, { key }) => { const r = ptys.get(key); return r ? serialize(r.term) : ''; });
 ipcMain.handle('clipboard-write', (e, { text }) => { try { clipboard.writeText(String(text || '')); return true; } catch { return false; } });   // 原生剪贴板：不受 sandbox/CSP/焦点限制(navigator.clipboard 在 sandbox 下会失效)
+ipcMain.handle('clipboard-read', () => { try { return clipboard.readText() || ''; } catch { return ''; } });   // 与 write 对称，供 Ctrl+Shift+V 自处理粘贴
 ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, title: r.title || '', activity: r.activity || '' })));
 
 // ---------- 3) 窗口 + 注入 native-term ----------

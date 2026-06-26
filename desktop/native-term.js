@@ -27,6 +27,11 @@
       if (e.type === 'keydown' && (e.key === 'c' || e.key === 'C') && (e.metaKey || (e.ctrlKey && e.shiftKey))) {
         const sel = term.getSelection(); if (sel) { try { window.stewardPty.clipboardWrite(sel); } catch (x) {} return false; }
       }
+      // 粘贴：Ctrl+Shift+V(终端惯例，与复制对称)→ 读原生剪贴板 → paste，不依赖默认菜单。⌘V/Ctrl+V 仍走系统默认菜单(避免双重粘贴)
+      if (e.type === 'keydown' && (e.key === 'v' || e.key === 'V') && e.ctrlKey && e.shiftKey) {
+        try { window.stewardPty.clipboardRead && window.stewardPty.clipboardRead().then(txt => { if (txt) term.paste(txt); }); } catch (x) {}
+        return false;
+      }
       return true;
     }); } catch (e) {}
     // OSC 52：claude(及很多 CLI)发这个转义序列让终端写剪贴板。xterm 默认不处理 → 所以"copied"了却粘不出。这里接管，解码后写原生剪贴板。
