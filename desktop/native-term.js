@@ -22,6 +22,13 @@
     const term = new XTerm({ cursorBlink: true, fontSize: 13, fontFamily: 'Menlo,Consolas,"Courier New",monospace', theme: { background: '#111' }, scrollback: 5000 });
     let fit = null; try { if (FitCls) { fit = new FitCls(); term.loadAddon(fit); } } catch (e) {}
     term.open(el);
+    // Cmd+C(mac) / Ctrl+Shift+C 有选区时复制(原生剪贴板)；普通 Ctrl+C 仍透传给终端(SIGINT)
+    try { term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && (e.key === 'c' || e.key === 'C') && (e.metaKey || (e.ctrlKey && e.shiftKey))) {
+        const sel = term.getSelection(); if (sel) { try { window.stewardPty.clipboardWrite(sel); } catch (x) {} return false; }
+      }
+      return true;
+    }); } catch (e) {}
     const doFit = () => { try { fit && fit.fit(); window.stewardPty.resize(key, term.cols, term.rows); } catch (e) {} };
     setTimeout(doFit, 60);
     term.onData(d => window.stewardPty.write(key, d));
@@ -76,10 +83,13 @@
   window.copyTermScreen = async function () {
     const w = windows[activeIdx] || windows[0]; if (!w) { toast('没有终端窗口'); return; }
     try {
-      let text = (await window.stewardPty.capture(w.key) || '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-      if (!text) { toast('屏幕没抓到内容'); return; }
-      const ok = await copyText(text);
-      toast(ok ? ('已复制 ' + text.split('\n').length + ' 行到剪贴板') : '复制失败：浏览器拒绝了剪贴板');
+      // 有选区就复制选区，否则抓整屏
+      let text = ''; const t = terms[w.key];
+      if (t && t.term && t.term.hasSelection && t.term.hasSelection()) text = t.term.getSelection();
+      if (!text) text = (await window.stewardPty.capture(w.key) || '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+      if (!text) { toast('没抓到内容'); return; }
+      const ok = await window.stewardPty.clipboardWrite(text);   // 走 Electron 原生剪贴板(sandbox 下 navigator.clipboard 会失效)
+      toast(ok ? ('已复制 ' + text.split('\n').length + ' 行到剪贴板') : '复制失败');
     } catch (e) { toast('复制失败：' + (e.message || e)); }
   };
   // 原 setInterval 捕获了旧 pollWinStates 引用 → 它会拉 /api/windows(空)覆盖状态。
