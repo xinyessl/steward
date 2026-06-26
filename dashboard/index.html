@@ -224,6 +224,12 @@ body.resizing #term-host iframe{pointer-events:none}
 .modal-h .mt{font-weight:600;font-size:14px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .modal-h .mf{font-size:11px;color:var(--c-t3);font-family:var(--fe)}
 .modal-x{cursor:pointer;color:var(--c-t3);font-size:18px;display:grid;place-items:center;width:28px;height:28px;border-radius:7px}.modal-x:hover{background:var(--c-bg);color:var(--c-t)}
+/* 抽屉(系统参考)：右侧滑出，常驻；spec 详情弹窗(z-index 100)叠在其上 */
+.drawer-mask{position:fixed;inset:0;background:rgba(15,39,68,.28);z-index:89;display:none}
+.drawer-mask.on{display:block}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,94vw);background:#fff;box-shadow:-10px 0 36px rgba(15,39,68,.2);z-index:90;transform:translateX(102%);transition:transform .22s ease;display:flex;flex-direction:column}
+.drawer.on{transform:translateX(0)}
+.drawer-body{flex:1;min-height:0;overflow:auto;padding:14px 18px;display:flex;flex-direction:column}
 .modal-body{overflow:auto;padding:18px 22px}
 /* markdown 渲染样式 */
 .md{font-size:13.5px;line-height:1.7;color:var(--c-t)}
@@ -466,14 +472,13 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="modal-body md" id="spec-mbody"></div>
   </div>
 </div>
-<!-- 系统参考弹窗：spec 结构 / 规约全貌（spec 已降为参考资料，给 AI/人理解系统） -->
-<div class="modal" id="specref-modal" onclick="if(event.target===this)closeSpecRef()">
-  <div class="modal-bd">
-    <div class="modal-h"><span class="mt"><i class="ti ti-book-2"></i> 系统参考 · spec（系统结构与规约 · 任务都回链到这里）</span><span class="modal-x" onclick="closeSpecRef()"><i class="ti ti-x"></i></span></div>
-    <div class="modal-body" style="padding:14px 18px;overflow:auto;display:flex;flex-direction:column;min-height:0">
-      <div class="fbar" id="spec-filter"></div>
-      <div id="specs" style="overflow:auto"></div>
-    </div>
+<!-- 系统参考抽屉：spec 结构 / 规约全貌（右侧滑出，常驻；点单个 spec → 详情走弹窗叠在其上） -->
+<div class="drawer-mask" id="specref-mask" onclick="closeSpecRef()"></div>
+<div class="drawer" id="specref-modal">
+  <div class="modal-h"><span class="mt"><i class="ti ti-book-2"></i> 系统参考 · spec（系统结构与规约 · 任务都回链到这里）</span><span class="modal-x" onclick="closeSpecRef()"><i class="ti ti-x"></i></span></div>
+  <div class="drawer-body">
+    <div class="fbar" id="spec-filter"></div>
+    <div id="specs"></div>
   </div>
 </div>
 <!-- 进度总览弹窗（KPIs + 优先级里程碑） -->
@@ -613,10 +618,7 @@ function renderSpecs(){
   }
   if(pendingHighlight && document.getElementById('spec-row-'+pendingHighlight)){ const id=pendingHighlight; pendingHighlight=null; setTimeout(()=>highlightSpec(id),60); }   // 从通知点过来：定位高亮
 }
-let _fromSpecRef=false;
 async function openSpec(id){
-  const sr=document.getElementById('specref-modal');   // 从「系统参考」点进来：先收起列表弹窗，避免两个弹窗叠加
-  if(sr&&sr.classList.contains('on')){ _fromSpecRef=true; sr.classList.remove('on'); } else _fromSpecRef=false;
   const m=document.getElementById('spec-modal'), body=document.getElementById('spec-mbody');
   document.getElementById('spec-mt').textContent=id; document.getElementById('spec-mf').textContent='';
   body.innerHTML='<div class="sst">加载中…</div>'; m.classList.add('on');
@@ -652,7 +654,7 @@ function makeCollapsible(root){
   }
   root.innerHTML=''; root.appendChild(frag);
 }
-function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); if(_fromSpecRef){ _fromSpecRef=false; const sr=document.getElementById('specref-modal'); if(sr){ sr.classList.add('on'); renderSpecs(); } } }
+function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); }
 // 页面内确认弹窗（替代原生 confirm）
 let _confirmCb=null;
 function uiConfirm(msg,onOk,opts){
@@ -1465,8 +1467,8 @@ function editTask(elx,bid,tid){
   elx.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); elx.blur(); } else if(e.key==='Escape'){ e.preventDefault(); elx.onblur=null; finish(false); } };
 }
 // 系统参考(spec)弹窗：spec 已降为参考资料
-function openSpecRef(){ const m=document.getElementById('specref-modal'); if(m){ m.classList.add('on'); renderSpecs(); } }
-function closeSpecRef(){ const m=document.getElementById('specref-modal'); if(m) m.classList.remove('on'); }
+function openSpecRef(){ const m=document.getElementById('specref-modal'),k=document.getElementById('specref-mask'); if(m){ m.classList.add('on'); if(k)k.classList.add('on'); renderSpecs(); } }
+function closeSpecRef(){ const m=document.getElementById('specref-modal'),k=document.getElementById('specref-mask'); if(m)m.classList.remove('on'); if(k)k.classList.remove('on'); }
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
 applyFocus();
