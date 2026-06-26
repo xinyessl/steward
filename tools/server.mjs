@@ -282,7 +282,7 @@ function scaffoldProject(dest, name, id) {
   copyIfAbsent(path.join(T, 'tools/board.mjs'), path.join(dest, 'tools/board.mjs'));
   copyIfAbsent(path.join(T, 'docs/.gitignore'), path.join(dest, 'docs/.gitignore'));         // 忽略 board/state/tasks 派生文件
   copyIfAbsent(path.join(T, '.claude/.gitignore'), path.join(dest, '.claude/.gitignore'));   // 忽略本地设置/plan
-  if (!fs.existsSync(path.join(dest, 'docs/tasks.json'))) fs.writeFileSync(path.join(dest, 'docs/tasks.json'), JSON.stringify({ title: '开发清单', groups: [] }, null, 2));
+  if (!fs.existsSync(path.join(dest, 'docs/tasks.json'))) fs.writeFileSync(path.join(dest, 'docs/tasks.json'), JSON.stringify({ title: '任务清单', batches: [] }, null, 2));
   if (!fs.existsSync(path.join(dest, 'docs/board.json'))) fs.writeFileSync(path.join(dest, 'docs/board.json'), JSON.stringify({ specs: [], summary: { total: 0, accepted: 0, inDev: 0, ready: 0, draft: 0 }, nodes: ['product', 'backend', 'frontend', 'test', 'ci', 'review', 'accept'] }, null, 2));
   fs.mkdirSync(path.join(dest, 'docs/.state'), { recursive: true });
   if (!fs.existsSync(path.join(dest, 'docs/.state/agents.json'))) fs.writeFileSync(path.join(dest, 'docs/.state/agents.json'), JSON.stringify({ updatedAt: '', agents: [{ id: 'dev', name: '开发', icon: 'code', status: 'idle', current: '', since: '' }] }, null, 2));
@@ -303,6 +303,38 @@ function projById(id) { const ps = loadProjects(); return ps.find(p => p.id === 
 function genBoard(projPath) { const bm = path.join(projPath, 'tools/board.mjs'); if (fs.existsSync(bm)) { try { spawnSync('node', [bm], { cwd: projPath }); } catch {} } }   // 同步：避免与连接 body 读取并发 spawn 的 fd 竞态
 function send(res, code, body, type = 'application/json') { res.writeHead(code, { 'Content-Type': type }); res.end(body); }
 function readOr(file, fallback) { try { return fs.readFileSync(file); } catch { return fallback; } }
+// 任务清单(进件批次)模型：规整 + 把旧扁平速记 items 迁进一个"历史速记·手动"批次
+function normalizeTasks(j) {
+  if (!j || typeof j !== 'object') j = {};
+  if (!Array.isArray(j.batches)) j.batches = [];
+  if (Array.isArray(j.items) && j.items.length) {
+    const tasks = j.items.map(it => ({
+      id: String(it.id || ('t' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36))),
+      title: String(it.text || '').slice(0, 300), status: it.done ? 'done' : 'todo', specRef: '', note: it.pri ? '重要' : ''
+    })).filter(t => t.title);
+    if (tasks.length) {
+      const ts = Math.min(...j.items.map(it => Number(it.ts) || Date.now()));
+      j.batches.push({ id: 'b-legacy-' + ts.toString(36), importedAt: ts, source: { type: 'manual', ref: '历史速记迁移' }, title: '历史速记', tasks });
+    }
+  }
+  j.items = [];
+  return j;
+}
+function sanitizeBatches(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, 200).map(b => ({
+    id: String((b && b.id) || ('b' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36))).slice(0, 40),
+    importedAt: Number(b && b.importedAt) || Date.now(),
+    source: { type: ['feishu', 'cli', 'manual'].includes(((b && b.source) || {}).type) ? b.source.type : 'manual', ref: String(((b && b.source) || {}).ref || '').slice(0, 500) },
+    title: String((b && b.title) || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    tasks: (Array.isArray(b && b.tasks) ? b.tasks : []).slice(0, 500).map(t => ({
+      id: String((t && t.id) || ('t' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36))).slice(0, 40),
+      title: String((t && t.title) || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+      status: ['todo', 'doing', 'done'].includes(t && t.status) ? t.status : 'todo',
+      specRef: String((t && t.specRef) || '').slice(0, 40), note: String((t && t.note) || '').slice(0, 300)
+    })).filter(t => t.title)
+  }));
+}
 function chatFile(p) { return path.join(p.path, 'docs/.state/chat.json'); }
 function readChat(p) { try { return JSON.parse(fs.readFileSync(chatFile(p), 'utf8')); } catch { return { messages: [] }; } }
 function appendChat(p, items) { const c = readChat(p); c.messages.push(...items); if (c.messages.length > 200) c.messages = c.messages.slice(-200); try { fs.mkdirSync(path.dirname(chatFile(p)), { recursive: true }); fs.writeFileSync(chatFile(p), JSON.stringify(c)); } catch {} }
@@ -388,6 +420,28 @@ const server = http.createServer((req, res) => {
       j.items = items;
       try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
       send(res, 200, JSON.stringify({ ok: true, items }));
+    });
+    return;
+  }
+  if (url.pathname === '/api/batches' && req.method !== 'POST') {   // 任务清单(进件批次)：读 docs/tasks.json，规整 + 迁移旧速记，迁移则落盘一次
+    const p = projById(pid); if (!p) return send(res, 200, JSON.stringify({ batches: [] }));
+    const f = path.join(p.path, 'docs/tasks.json');
+    let j = {}; try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { j = { title: '任务清单', batches: [] }; }
+    const hadItems = Array.isArray(j.items) && j.items.length;
+    j = normalizeTasks(j);
+    if (hadItems) { try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch {} }
+    return send(res, 200, JSON.stringify({ batches: j.batches || [] }));
+  }
+  if (url.pathname === '/api/batches' && req.method === 'POST') {   // 整存批次到 docs/tasks.json(本地·不入库)
+    const p = projById(pid); if (!p) return send(res, 400, JSON.stringify({ ok: false, error: '项目不存在' }));
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
+      let b = {}; try { b = JSON.parse(buf); } catch {}
+      const batches = sanitizeBatches(b.batches);
+      const f = path.join(p.path, 'docs/tasks.json');
+      let j = {}; try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { j = { title: '任务清单' }; }
+      j.batches = batches; j.items = [];
+      try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
+      send(res, 200, JSON.stringify({ ok: true, batches }));
     });
     return;
   }

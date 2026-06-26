@@ -169,6 +169,30 @@ body.resizing #term-host iframe{pointer-events:none}
 .opl{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--c-t3)}
 .mini-sel{font-size:11.5px;border:1px solid var(--c-bds);border-radius:6px;padding:3px 6px;background:#fff;color:var(--c-t2);cursor:pointer;outline:none}
 .mini-sel:focus{border-color:var(--c-pri)}
+/* 任务清单 · 进件批次 */
+.task-add{display:flex;gap:6px;margin-bottom:10px}
+.task-add input{flex:1;min-width:0;border:1px solid var(--c-bd);border-radius:8px;padding:7px 10px;font-size:12.5px;outline:none}
+.task-add input:focus{border-color:var(--c-pri-b)}
+.batch{border:1px solid var(--c-bd);border-radius:10px;margin-bottom:10px;background:#fff;overflow:hidden}
+.batch-h{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;user-select:none}
+.batch-h:hover{background:var(--c-bg)}
+.batch-src{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:999px;flex-shrink:0}
+.src-feishu{background:#E8F1FA;color:#1A6DBE}.src-cli{background:#ECEAF6;color:#7A5BA6}.src-manual{background:var(--c-bg);color:var(--c-t2)}
+.batch-t{font-weight:600;font-size:12.5px;color:var(--c-t);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.batch-meta{font-size:10.5px;color:var(--c-t3);font-family:var(--fe);flex-shrink:0}
+.batch-del{color:var(--c-t3);cursor:pointer;flex-shrink:0;display:none}.batch-h:hover .batch-del{display:inline}.batch-del:hover{color:var(--c-dg)}
+.batch-b{border-top:1px solid var(--c-bd)}
+.task-row{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--c-bg)}
+.task-row:last-child{border-bottom:none}.task-row:hover{background:var(--c-bg)}
+.task-ck{cursor:pointer;font-size:17px;display:inline-flex;flex-shrink:0}
+.task-ck.st-todo{color:var(--c-t3)}.task-ck.st-doing{color:var(--c-pri)}.task-ck.st-done{color:var(--c-ok)}
+.task-tt{flex:1;min-width:0;font-size:12.5px;color:var(--c-t);line-height:1.45;word-break:break-word}
+.task-tt.done{color:var(--c-t3);text-decoration:line-through}
+.task-tt.editing{outline:1px solid var(--c-pri-b);border-radius:4px;padding:1px 4px;text-decoration:none}
+.task-spec{font-size:10px;font-weight:700;font-family:var(--fe);color:var(--c-pri);background:var(--c-pri-l);border:1px solid var(--c-pri-b);border-radius:5px;padding:1px 6px;cursor:pointer;flex-shrink:0}.task-spec:hover{background:var(--c-pri-b)}
+.task-st{font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;flex-shrink:0}
+.task-st.st-todo{background:var(--c-bg);color:var(--c-t3)}.task-st.st-doing{background:var(--c-pri-l);color:var(--c-pri)}.task-st.st-done{background:var(--c-ok-l);color:var(--c-ok)}
+.task-del{border:none;background:none;color:var(--c-t3);cursor:pointer;flex-shrink:0;display:none;padding:0}.task-row:hover .task-del{display:inline}.task-del:hover{color:var(--c-dg)}
 .mini-btn2{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;border:1px solid var(--c-bds);background:#fff;color:var(--c-t2);border-radius:6px;padding:3px 10px;cursor:pointer}
 .mini-btn2:hover{border-color:var(--c-pri);color:var(--c-pri)}
 .mini-btn2.danger:hover{border-color:var(--c-dg);color:var(--c-dg)}
@@ -180,27 +204,6 @@ body.resizing #term-host iframe{pointer-events:none}
 .team{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.team .agent{min-width:220px}
 /* v1 速记小任务：右上角入口 + 弹层 · 项目级 · 本地不入库 · 与 spec 完全隔离 */
 .rf-badge{background:var(--c-pri);color:#fff;border-radius:9px;font-size:10px;font-weight:700;min-width:16px;height:16px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe);margin-left:2px}
-.todo-pop{position:absolute;right:14px;top:50px;width:380px;max-height:64vh;background:#fff;border:1px solid var(--c-bd);border-radius:10px;box-shadow:0 12px 34px rgba(15,39,68,.22);z-index:120;display:none;flex-direction:column;padding:10px 12px}
-.todo-pop.on{display:flex}
-.todo-poph{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--c-t2)}
-.todo-poph .todo-hint{margin-left:auto;font-size:10.5px;font-weight:400;color:var(--c-t3)}
-.todo-add{margin-top:9px}
-.todo-add input{width:100%;box-sizing:border-box;border:1px solid var(--c-bds);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;outline:none}
-.todo-add input:focus{border-color:var(--c-pri)}
-.todo-list{margin-top:7px;flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:4px}
-.todo-item{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:7px;font-size:13px}
-.todo-item:hover{background:var(--c-bg)}
-.todo-item .tk-check{cursor:pointer;color:var(--c-t3);display:grid;place-items:center}
-.todo-item.done .tk-check{color:var(--c-ok)}
-.todo-item .tk-pri{cursor:pointer;color:#cdd5df;display:grid;place-items:center}
-.todo-item .tk-pri.on{color:var(--c-wn)}
-.todo-item .tk-text{flex:1;min-width:0;word-break:break-word;cursor:text}
-.todo-item.done .tk-text{text-decoration:line-through;color:var(--c-t3)}
-.todo-item .tk-text.editing{background:#fff;outline:1px solid var(--c-pri);border-radius:4px;padding:1px 4px;cursor:text}
-.todo-item .tk-del{opacity:0;border:none;background:none;color:var(--c-t3);cursor:pointer;display:grid;place-items:center}
-.todo-item:hover .tk-del{opacity:.55}
-.todo-item .tk-del:hover{opacity:1!important;color:var(--c-dg)}
-.todo-empty{font-size:12px;color:var(--c-t3);padding:8px 4px}
 .agent{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--c-bd);border-radius:10px;padding:8px 10px;position:relative;min-width:0;cursor:pointer}
 .agent:hover{border-color:var(--c-pri-b)}.agent.running{border-color:var(--c-pri-b);background:var(--c-pri-l)}
 .aic{width:30px;height:30px;border-radius:8px;background:var(--c-bg);color:var(--c-t2);display:grid;place-items:center;font-size:16px;flex-shrink:0}
@@ -328,18 +331,12 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="sp"></div>
   <div class="gen" id="gen">—</div>
   <div class="bell" onclick="toggleInbox()" title="需要你介入的事项"><i class="ti ti-bell"></i><span class="badge" id="inbox-badge" style="display:none">0</span></div>
-  <button class="rf" id="todo-btn" onclick="toggleTodoPop()" title="速记小任务（本地·不入库·与 spec 隔离；可在终端里让 claude 帮你记）"><i class="ti ti-pin"></i> 速记 <span class="rf-badge" id="todo-count" style="display:none"></span></button>
   <button class="rf" onclick="openOverview()" title="进度总览（spec 统计 + 优先级里程碑）"><i class="ti ti-chart-bar"></i> 进度</button>
   <button class="rf" onclick="editLessons()" title="Steward 全局经验库（跨项目共享·开发 agent 开工前都会读）"><i class="ti ti-book"></i> 经验库</button>
   <button class="rf" onclick="refreshAll()"><i class="ti ti-refresh"></i> 刷新</button>
 </div>
 <div id="readybar" class="readybar" style="display:none"></div>
 <div class="inbox-pop" id="inbox-pop"></div>
-<div class="todo-pop" id="todo-pop">
-  <div class="todo-poph"><i class="ti ti-pin"></i> 速记 · 小任务 <span class="todo-hint">本地 · 不入库 · 不进流程</span></div>
-  <div class="todo-add"><input id="todo-input" type="text" maxlength="300" placeholder="记一条小任务，回车添加…" onkeydown="if(event.key==='Enter')addTodo()"></div>
-  <div id="todo-list" class="todo-list"></div>
-</div>
 
 <div class="wrap">
   <div class="left">
@@ -347,9 +344,9 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="team" id="team"></div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
-      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（进度 / 验收 · 待验收可直接通过或打回）</div>
-      <div class="fbar" id="spec-filter"></div>
-      <div id="specs"></div>
+      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<button class="mini-btn2" style="margin-left:auto" onclick="openSpecRef()" title="系统参考：查看 spec 结构 / 规约全貌（给 AI/人理解系统）"><i class="ti ti-book-2"></i> 系统参考</button></div>
+      <div class="fbar" id="task-filter"></div>
+      <div id="tasklist"></div>
     </div>
   </div>
 
@@ -396,7 +393,7 @@ body.resizing #term-host iframe{pointer-events:none}
       <div class="pf" style="font-size:11.5px;color:var(--c-t3);line-height:1.7">每个项目用<b>自己企业的飞书自建应用</b>：开放平台建应用 → 开 <code>docx:document:readonly</code> 等读权限 → 发布 → 把放需求文档的文件夹/知识库共享给该应用（可阅读）。<br>凭据按项目存本地 <code>~/.steward/feishu.json</code>，<b>不入任何仓库</b>。清空 App ID 保存 = 删除本项目配置。</div>
       <div class="pf" style="border-top:1px dashed var(--c-bd);padding-top:13px;margin-top:6px"><label>用飞书链接导入需求（/intake）</label>
         <div style="display:flex;gap:6px"><input id="fk-url" placeholder="粘贴飞书文档链接（/docx/ 或 /wiki/）" style="flex:1"><button type="button" class="abtn" style="white-space:nowrap" onclick="importFeishuDoc()"><i class="ti ti-download"></i> 导入分诊</button></div>
-        <div style="font-size:11px;color:var(--c-t3);margin-top:5px">在当前项目终端预填 <code>/intake &lt;链接&gt;</code>：拉正文 → 对照历史 spec 分诊 → 出分流清单让你确认 → 落 spec / 速记。需先配好上面的凭据。</div>
+        <div style="font-size:11px;color:var(--c-t3);margin-top:5px">在当前项目终端预填 <code>/intake &lt;链接&gt;</code>：拉正文 → 先析是否调 spec → 拆成任务清单(进件批次)让你确认 → 落任务 + 按需更 spec。需先配好上面的凭据。</div>
       </div>
     </div>
     <div class="amf"><span id="fk-err" style="margin-right:auto;font-size:12px;align-self:center"></span><button class="abtn ghost" id="fk-test" onclick="testFeishuCfg()">测试连接</button><button class="abtn ghost" onclick="closeFeishuCfg()">取消</button><button class="abtn" id="fk-submit" onclick="saveFeishuCfg()">保存</button></div>
@@ -443,7 +440,7 @@ body.resizing #term-host iframe{pointer-events:none}
         <input id="p-fs-appid" placeholder="飞书应用 App ID（cli_xxx）" style="margin-bottom:6px">
         <input id="p-fs-secret" type="password" placeholder="飞书应用 App Secret" style="margin-bottom:6px">
         <input id="p-fs-domain" placeholder="文档域名 如 xxx.feishu.cn（可留空）">
-        <div style="font-size:11px;color:var(--c-t3);margin-top:5px">填了之后，可在项目终端用 <code>/intake</code> 贴飞书文档链接，自动拉取正文并分诊成 spec / 速记。<b>每个项目用各自企业的飞书机器人</b>；凭据本地存 <code>~/.steward/feishu.json</code>、不入库。</div>
+        <div style="font-size:11px;color:var(--c-t3);margin-top:5px">填了之后，可在项目终端用 <code>/intake</code> 贴飞书文档链接，自动拉取正文并拆成任务清单(进件批次，按需更新 spec)。<b>每个项目用各自企业的飞书机器人</b>；凭据本地存 <code>~/.steward/feishu.json</code>、不入库。</div>
       </div>
     </div>
     <div class="amf"><span id="p-err" style="margin-right:auto;color:var(--c-dg);font-size:12px;align-self:center"></span><button class="abtn ghost" onclick="closeAddProject()">取消</button><button class="abtn" id="p-submit" onclick="submitAddProject()">添加</button></div>
@@ -466,6 +463,16 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="modal-bd">
     <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
     <div class="modal-body md" id="spec-mbody"></div>
+  </div>
+</div>
+<!-- 系统参考弹窗：spec 结构 / 规约全貌（spec 已降为参考资料，给 AI/人理解系统） -->
+<div class="modal" id="specref-modal" onclick="if(event.target===this)closeSpecRef()">
+  <div class="modal-bd">
+    <div class="modal-h"><span class="mt"><i class="ti ti-book-2"></i> 系统参考 · spec（系统结构与规约 · 任务都回链到这里）</span><span class="modal-x" onclick="closeSpecRef()"><i class="ti ti-x"></i></span></div>
+    <div class="modal-body" style="padding:14px 18px;overflow:auto;display:flex;flex-direction:column;min-height:0">
+      <div class="fbar" id="spec-filter"></div>
+      <div id="specs" style="overflow:auto"></div>
+    </div>
   </div>
 </div>
 <!-- 进度总览弹窗（KPIs + 优先级里程碑） -->
@@ -925,7 +932,7 @@ function delSession(id){
   },{title:'删除这段历史对话？',okText:'删除',danger:true});
 }
 
-function refreshAll(){ if(!PROJECT)return; loadBoard();renderTeam(); }
+function refreshAll(){ if(!PROJECT)return; loadBoard();renderTeam();loadBatches(); }
 // 「开发状态」按右侧窗口渲染：一个窗口=一个开发，绿干活/红待确认/灰空闲，点击切到该窗口
 function renderTeam(){
   const el=document.getElementById('team'); if(!el)return;
@@ -1047,7 +1054,7 @@ function projDrop(e,id){
   applyProjBadges();
   fetch('/api/project-reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:PROJECTS.map(p=>p.id)})}).catch(()=>{});
 }
-function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal(); loadTodos(); }
+function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal(); }
 function onProj(){ selectProject(document.getElementById('proj').value); }
 function delCurrentProject(){ if(!PROJECT){ toast('当前没有项目'); return; } removeProject(PROJECT); }
 function removeProject(id){
@@ -1357,7 +1364,7 @@ try{
   const es=new EventSource('/api/events');
   es.onmessage=(e)=>{
     let d; try{ d=JSON.parse(e.data); }catch{ refreshAll(); loadInbox(true); return; }
-    if(d.type==='refresh'){ refreshAll(); loadInbox(true); loadTodos(); return; }
+    if(d.type==='refresh'){ refreshAll(); loadInbox(true); return; }
     if(d.type==='chat' && d.project===PROJECT && MODE==='chat'){
       if(d.kind==='tool') append('sys', d.text);
       else if(d.kind==='text') append('ai', d.text);
@@ -1367,58 +1374,87 @@ try{
 }catch(e){}
 function openOverview(){ document.getElementById('ov-modal').classList.add('on'); }
 function closeOverview(){ document.getElementById('ov-modal').classList.remove('on'); }
-// ===== v1 速记小任务（项目级 · 存 docs/tasks.json 的 items · 本地不入库 · 与 spec 完全隔离） =====
-let todos=[];
-async function loadTodos(){
-  if(!PROJECT){ todos=[]; renderTodos(); return; }
-  try{ const r=await (await fetch('/api/tasks?project='+PROJECT+'&t='+Date.now())).json(); todos=Array.isArray(r.items)?r.items:[]; }catch(e){ todos=[]; }
-  renderTodos();
+// ===== 任务清单（进件批次模型 · 项目级 · 存 docs/tasks.json 的 batches · 本地不入库） =====
+let batches=[];
+let taskFilter='all';
+let collapsedBatches=new Set();
+async function loadBatches(){
+  if(!PROJECT){ batches=[]; renderTasks(); return; }
+  try{ const r=await (await fetch('/api/batches?project='+PROJECT+'&t='+Date.now())).json(); batches=Array.isArray(r.batches)?r.batches:[]; }catch(e){ batches=[]; }
+  renderTasks();
 }
-function saveTodos(){ if(!PROJECT)return; fetch('/api/todos?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:todos})}).catch(()=>{}); }
-function todoSort(a,b){ if(a.done!==b.done)return a.done?1:-1; if(!a.done){ if(!!a.pri!==!!b.pri)return a.pri?-1:1; return (a.ts||0)-(b.ts||0); } return (b.ts||0)-(a.ts||0); }
-function renderTodos(){
-  const open=todos.filter(t=>!t.done).length;
-  const cnt=document.getElementById('todo-count'); if(cnt){ cnt.textContent=open||''; cnt.style.display=open?'':'none'; }
-  const list=document.getElementById('todo-list'); if(!list)return;
-  const sorted=[...todos].sort(todoSort);
-  list.innerHTML=sorted.length?sorted.map(t=>`<div class="todo-item ${t.done?'done':''}">`
-    +`<span class="tk-check" onclick="toggleTodo('${jss(t.id)}')" title="完成/未完成"><i class="ti ti-${t.done?'square-rounded-check-filled':'square-rounded'}"></i></span>`
-    +`<span class="tk-pri ${t.pri?'on':''}" onclick="toggleTodoPri('${jss(t.id)}')" title="标记重要"><i class="ti ti-${t.pri?'flag-filled':'flag'}"></i></span>`
-    +`<span class="tk-text" title="双击编辑" ondblclick="editTodo(this,'${jss(t.id)}')">${esc(t.text)}</span>`
-    +`<button class="tk-del" onclick="delTodo('${jss(t.id)}')" title="删除"><i class="ti ti-x"></i></button>`
-    +`</div>`).join(''):'<div class="todo-empty">还没有小任务 · 上面输入框记一条，回车添加</div>';
+function saveBatches(){ if(!PROJECT)return; fetch('/api/batches?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batches})}).catch(()=>{}); }
+function tfmt(ts){ if(!ts)return''; const d=new Date(ts),p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function srcMeta(s){ const t=(s&&s.type)||'manual'; return t==='feishu'?{ic:'ti-file-text',lb:'飞书',cls:'src-feishu'}:t==='cli'?{ic:'ti-terminal-2',lb:'CLI',cls:'src-cli'}:{ic:'ti-pencil',lb:'手动',cls:'src-manual'}; }
+function setTaskFilter(k){ taskFilter=k; renderTasks(); }
+function allTasks(){ return batches.flatMap(b=>b.tasks||[]); }
+function renderTasks(){
+  const ft=document.getElementById('task-filter'),el=document.getElementById('tasklist'); if(!el)return;
+  const ts=allTasks(),c={all:ts.length,todo:ts.filter(t=>t.status==='todo').length,doing:ts.filter(t=>t.status==='doing').length,done:ts.filter(t=>t.status==='done').length};
+  const chips=[['all','全部',c.all],['todo','待办',c.todo],['doing','进行中',c.doing],['done','已完成',c.done]];
+  if(ft) ft.innerHTML=chips.map(([k,lb,n])=>`<span class="fchip ${k==='todo'?'warn':''} ${taskFilter===k?'on':''}" onclick="setTaskFilter('${k}')">${lb}<span class="n">${n}</span></span>`).join('');
+  let html=`<div class="task-add"><input id="task-input" type="text" maxlength="300" placeholder="手动记一条任务，回车添加…" onkeydown="if(event.key==='Enter')addTask()"><button class="mini-btn2" onclick="addTask()"><i class="ti ti-plus"></i> 加</button></div>`;
+  const order=[...batches].sort((a,b)=>(b.importedAt||0)-(a.importedAt||0));
+  let shown=0;
+  order.forEach(b=>{
+    const tasks=(b.tasks||[]).filter(t=>taskFilter==='all'||t.status===taskFilter);
+    if(!tasks.length&&taskFilter!=='all')return;
+    shown++;
+    const done=(b.tasks||[]).filter(t=>t.status==='done').length,total=(b.tasks||[]).length,col=collapsedBatches.has(b.id),sm=srcMeta(b.source);
+    html+=`<div class="batch">`
+      +`<div class="batch-h" onclick="toggleBatch('${jss(b.id)}')">`
+        +`<i class="ti ti-chevron-${col?'right':'down'}"></i>`
+        +`<span class="batch-src ${sm.cls}"><i class="ti ${sm.ic}"></i> ${sm.lb}</span>`
+        +`<span class="batch-t" title="${esc(b.title||'')}">${esc(b.title||'(未命名进件)')}</span>`
+        +`<span class="batch-meta">${esc(tfmt(b.importedAt))} · ${done}/${total}</span>`
+        +`<span class="batch-del" onclick="event.stopPropagation();delBatch('${jss(b.id)}')" title="删除整个批次"><i class="ti ti-trash"></i></span>`
+      +`</div>`
+      +(col?'':`<div class="batch-b">${tasks.map(t=>taskRow(b.id,t)).join('')}</div>`)
+      +`</div>`;
+  });
+  if(!shown) html+=`<div class="sst" style="padding:10px 2px;line-height:1.7">${batches.length?'该筛选下暂无任务。':'还没有任务。在终端里把飞书链接或一坨需求丢给 claude 跑 <code>/intake</code> 拆成任务，或上面手动加一条。'}</div>`;
+  el.innerHTML=html;
 }
-function addTodo(){
-  const inp=document.getElementById('todo-input'); const v=(inp.value||'').replace(/\s+/g,' ').trim(); if(!v||!PROJECT)return;
-  todos.push({id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:v.slice(0,300),done:false,pri:false,ts:Date.now()});
-  inp.value=''; renderTodos(); saveTodos();
+function taskRow(bid,t){
+  const m=({todo:['待办','st-todo','square-rounded'],doing:['进行中','st-doing','player-play-filled'],done:['已完成','st-done','square-rounded-check-filled']})[t.status]||['待办','st-todo','square-rounded'];
+  const sp=t.specRef?`<span class="task-spec" onclick="event.stopPropagation();openSpec('${jss(t.specRef)}')" title="关联 spec ${esc(t.specRef)}（点开看）">${esc(t.specRef)}</span>`:'';
+  return `<div class="task-row">`
+    +`<span class="task-ck ${m[1]}" onclick="cycleTask('${jss(bid)}','${jss(t.id)}')" title="点击切换 待办 → 进行中 → 已完成"><i class="ti ti-${m[2]}"></i></span>`
+    +`<span class="task-tt ${t.status==='done'?'done':''}" title="双击编辑" ondblclick="editTask(this,'${jss(bid)}','${jss(t.id)}')">${esc(t.title)}</span>`
+    +sp
+    +`<span class="task-st ${m[1]}">${m[0]}</span>`
+    +`<button class="task-del" onclick="delTask('${jss(bid)}','${jss(t.id)}')" title="删除"><i class="ti ti-x"></i></button>`
+    +`</div>`;
 }
-function toggleTodo(id){ const t=todos.find(x=>x.id===id); if(!t)return; t.done=!t.done; if(t.done)t.pri=false; renderTodos(); saveTodos(); }
-function toggleTodoPri(id){ const t=todos.find(x=>x.id===id); if(!t||t.done)return; t.pri=!t.pri; renderTodos(); saveTodos(); }
-function delTodo(id){ todos=todos.filter(x=>x.id!==id); renderTodos(); saveTodos(); }
-function editTodo(el,id){
-  const t=todos.find(x=>x.id===id); if(!t)return;
-  el.contentEditable='true'; el.classList.add('editing'); el.focus();
-  try{ const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}
-  let done=false;
-  const finish=(save)=>{ if(done)return; done=true; el.contentEditable='false'; el.classList.remove('editing');
-    if(save){ const nv=(el.textContent||'').replace(/\s+/g,' ').trim(); if(nv){ t.text=nv.slice(0,300); saveTodos(); } }
-    renderTodos();
+function cycleTask(bid,tid){ const b=batches.find(x=>x.id===bid); if(!b)return; const t=(b.tasks||[]).find(x=>x.id===tid); if(!t)return; t.status=t.status==='todo'?'doing':t.status==='doing'?'done':'todo'; renderTasks(); saveBatches(); }
+function toggleBatch(id){ if(collapsedBatches.has(id))collapsedBatches.delete(id); else collapsedBatches.add(id); renderTasks(); }
+function delTask(bid,tid){ const b=batches.find(x=>x.id===bid); if(!b)return; b.tasks=(b.tasks||[]).filter(x=>x.id!==tid); if(!b.tasks.length) batches=batches.filter(x=>x.id!==bid); renderTasks(); saveBatches(); }
+function delBatch(id){ const b=batches.find(x=>x.id===id); if(b&&(b.tasks||[]).length&&!confirm('删除整个批次「'+(b.title||'')+'」及其 '+b.tasks.length+' 条任务?'))return; batches=batches.filter(x=>x.id!==id); renderTasks(); saveBatches(); }
+function addTask(){
+  const inp=document.getElementById('task-input'); const v=(inp&&inp.value||'').replace(/\s+/g,' ').trim(); if(!v||!PROJECT)return;
+  const d=new Date(),p=n=>String(n).padStart(2,'0'),day=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  let b=batches.find(x=>x.source&&x.source.type==='manual'&&x.source.ref==='手动·'+day);
+  if(!b){ b={id:'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),importedAt:Date.now(),source:{type:'manual',ref:'手动·'+day},title:'手动任务 · '+day,tasks:[]}; batches.push(b); }
+  b.tasks.push({id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),title:v.slice(0,300),status:'todo',specRef:'',note:''});
+  inp.value=''; renderTasks(); saveBatches();
+  setTimeout(()=>{ const i=document.getElementById('task-input'); if(i)i.focus(); },20);
+}
+function editTask(elx,bid,tid){
+  const b=batches.find(x=>x.id===bid); if(!b)return; const t=(b.tasks||[]).find(x=>x.id===tid); if(!t)return;
+  elx.contentEditable='true'; elx.classList.add('editing'); elx.focus();
+  try{ const r=document.createRange(); r.selectNodeContents(elx); const s=getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}
+  let fin=false;
+  const finish=(save)=>{ if(fin)return; fin=true; elx.contentEditable='false'; elx.classList.remove('editing');
+    if(save){ const nv=(elx.textContent||'').replace(/\s+/g,' ').trim(); if(nv){ t.title=nv.slice(0,300); saveBatches(); } }
+    renderTasks();
   };
-  el.onblur=()=>finish(true);
-  el.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); el.blur(); } else if(e.key==='Escape'){ e.preventDefault(); el.onblur=null; finish(false); } };
+  elx.onblur=()=>finish(true);
+  elx.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); elx.blur(); } else if(e.key==='Escape'){ e.preventDefault(); elx.onblur=null; finish(false); } };
 }
-function toggleTodoPop(){
-  const pop=document.getElementById('todo-pop'); if(!pop)return;
-  const willOpen=!pop.classList.contains('on');
-  pop.classList.toggle('on',willOpen);
-  if(willOpen){
-    const ip=document.getElementById('inbox-pop'); if(ip)ip.classList.remove('on');
-    loadTodos();   // 拉最新（含你在终端里让 claude 记进来的）
-    setTimeout(()=>{ const i=document.getElementById('todo-input'); if(i)i.focus(); },30);
-  }
-}
-loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); loadTodos(); });
+// 系统参考(spec)弹窗：spec 已降为参考资料
+function openSpecRef(){ const m=document.getElementById('specref-modal'); if(m){ m.classList.add('on'); renderSpecs(); } }
+function closeSpecRef(){ const m=document.getElementById('specref-modal'); if(m) m.classList.remove('on'); }
+loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
 applyFocus();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
@@ -1430,8 +1466,6 @@ document.addEventListener('click',e=>{
   if(ip&&ip.classList.contains('on')&&!e.target.closest('#inbox-pop')&&!e.target.closest('.bell')) ip.classList.remove('on');
   const cp=document.getElementById('cmd-pop');
   if(cp&&cp.classList.contains('on')&&!e.target.closest('#cmd-pop')&&!e.target.closest('#t-cmd')) cp.classList.remove('on');
-  const tp=document.getElementById('todo-pop');
-  if(tp&&tp.classList.contains('on')&&!e.target.closest('#todo-pop')&&!e.target.closest('#todo-btn')) tp.classList.remove('on');
 });
 // 左右分隔条拖拽：调整右侧宽度（左侧自适应），记忆到 localStorage
 (function(){
