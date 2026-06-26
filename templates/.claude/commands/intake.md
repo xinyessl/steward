@@ -7,7 +7,8 @@ description: 进件（飞书文档/直接录入）→ 拉正文看图 → 先析
 > 模型：**任务清单（进件批次）= 主线**（用户日常看「我的任务做到哪了」）；**spec = 系统参考资料**（供 AI/人理解系统全貌，进件时被动维护，不再是日常操作对象）。**无论大小都出 task**；大的额外动 spec，小的只动某条 AC 或不动 spec。
 
 ## 1. 拉正文 + 看图（飞书链接时；重要：需求常画在截图里）
-运行：`node tools/feishu-fetch.mjs "<飞书链接>"`
+运行：`node tools/feishu-fetch.mjs "<飞书链接>"`（支持新版文档 `/docx/`、知识库 `/wiki/`、**多维表格 `/base/`**）
+- **多维表格(Bitable)** → 输出是「每条记录 = 一条 task」的结构(主字段=标题、其余字段=备注)。直接据此拆任务,通常一条记录就是一条需求/bug。需飞书应用开 `bitable:app:readonly` 权限、且表已共享给应用;报权限错就转告用户去补。
 - 成功 → 拿到文档纯文本。**末尾若列出「📷 本文档含 N 张图片」+ 本地路径，务必逐张用 `Read` 工具打开看**（你有视觉）——飞书 raw_content 丢图片，界面改动/标注全在图里，只看文字会漏需求（验收会挂）。把图里的信息和对应文字段落对齐后再分析。
 - 末尾若是「⚠️ 图片未能下载（缺 drive:drive:readonly）」→ **转告用户去飞书开放平台补 `drive:drive:readonly` 权限并重新发布**，然后**停下**（不要在缺图的情况下硬分析）。
 - 其它报错（没配机器人 / 无法确定项目 / wiki 权限 / 旧版文档…）→ **把原话转告用户**让其在控制台「飞书配置」补齐或换新版链接，然后**停下**。
@@ -57,7 +58,7 @@ console.log("已落批次", batch.id, "含", batch.tasks.length, "条 task");
 '
 ```
 
-> `source.type`：飞书链接→`feishu`、CLI 窗口直接录入→`cli`、手动单条→`manual`（手动单条优先用 `/todo`）。`docs/tasks.json` 本地不入库（在 `docs/.gitignore`）。
+> `source.type`：飞书链接→`feishu`、CLI 窗口直接录入→`cli`、手动单条→`manual`（手动单条优先用 `/todo`）。`docs/tasks.json` 随项目入库、团队共享。
 
 ## 6. 回报
 一句话：建/改了哪些 spec（draft/AC）、落了一个含几条 task 的批次、有没有需要你进一步定的（`NEEDS-HUMAN`）。开做时各 task 走 `/build`（关联 spec）或 `/fix`，做完回写该 task `status=done`。

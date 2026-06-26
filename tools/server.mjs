@@ -280,6 +280,7 @@ function scaffoldProject(dest, name, id) {
   copyIfAbsent(path.join(T, 'docs/specs/_TEMPLATE.md'), path.join(dest, 'docs/specs/_TEMPLATE.md'));
   copyIfAbsent(path.join(T, 'docs/specs/README.md'), path.join(dest, 'docs/specs/README.md'));
   copyIfAbsent(path.join(T, 'tools/board.mjs'), path.join(dest, 'tools/board.mjs'));
+  copyIfAbsent(path.join(T, 'tools/feishu-fetch.mjs'), path.join(dest, 'tools/feishu-fetch.mjs'));   // /intake 飞书拉取(文档/多维表格)用
   copyIfAbsent(path.join(T, 'docs/.gitignore'), path.join(dest, 'docs/.gitignore'));         // 忽略 board/state/tasks 派生文件
   copyIfAbsent(path.join(T, '.claude/.gitignore'), path.join(dest, '.claude/.gitignore'));   // 忽略本地设置/plan
   if (!fs.existsSync(path.join(dest, 'docs/tasks.json'))) fs.writeFileSync(path.join(dest, 'docs/tasks.json'), JSON.stringify({ title: '任务清单', batches: [] }, null, 2));
