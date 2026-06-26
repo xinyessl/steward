@@ -328,7 +328,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <body>
 <div class="tb">
   <div class="mk"><i class="ti ti-robot"></i></div>
-  <div><div class="tt">Steward 控制台</div><div class="sub">文档驱动研发 · 多项目</div></div>
+  <div><div class="tt">Steward 控制台</div><div class="sub">文档驱动研发 · 多项目<span id="app-ver"></span></div></div>
   <div class="projwrap">
     <select id="proj" class="projsel" onchange="onProj()"></select>
     <div id="proj-spread" class="projspread" style="display:none"></div>
@@ -1507,6 +1507,8 @@ function openSpecRef(){ const m=document.getElementById('specref-modal'),k=docum
 function closeSpecRef(){ const m=document.getElementById('specref-modal'),k=document.getElementById('specref-mask'); if(m)m.classList.remove('on'); if(k)k.classList.remove('on'); }
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
+function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return; const v=window.STEWARD_VERSION; el.textContent = v ? (' · v'+v) : ' · web'; }
+showAppVersion();
 applyFocus();
 setInterval(pollWinStates, 2500);   // 持续探测各窗口忙/闲，干完在 tab 上打完成标
 // 弹窗外部点击即关闭：历史对话 / 通知铃铛

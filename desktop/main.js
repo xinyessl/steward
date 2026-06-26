@@ -184,7 +184,8 @@ function createWindow() {
       const fitJs = fs.readFileSync(require.resolve('@xterm/addon-fit/lib/addon-fit.js'), 'utf8');
       const nativeJs = fs.readFileSync(path.join(__dirname, 'native-term.js'), 'utf8');
       mainWin.webContents.insertCSS(xtermCss);
-      mainWin.webContents.executeJavaScript(xtermJs + '\n' + fitJs + '\n' + nativeJs).catch(err => console.error('inject', err));
+      const verJs = 'window.STEWARD_VERSION=' + JSON.stringify(app.getVersion()) + ';try{showAppVersion&&showAppVersion()}catch(e){}';
+      mainWin.webContents.executeJavaScript(verJs + '\n' + xtermJs + '\n' + fitJs + '\n' + nativeJs).catch(err => console.error('inject', err));
     } catch (err) { console.error('注入 xterm/native-term 失败：', err.message); }
   });
 }
