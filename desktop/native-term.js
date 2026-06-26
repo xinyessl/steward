@@ -80,17 +80,29 @@
     if (!w) return;
     setTimeout(() => { try { window.stewardPty.write(w.key, String(text) + (enter ? '\r' : '')); } catch (e) {} }, 350);
   };
+  function readTermScreen(term) {   // 直接读渲染端 xterm 缓冲区(含滚动历史)——不依赖主进程 headless
+    try {
+      const b = term.buffer.active, out = [];
+      for (let y = 0; y < b.length; y++) { const ln = b.getLine(y); out.push(ln ? ln.translateToString(true) : ''); }
+      return out.join('\n').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+    } catch (e) { return ''; }
+  }
+  async function writeClip(text) {   // 优先 Electron 原生剪贴板，退回网页剪贴板
+    try { if (window.stewardPty && window.stewardPty.clipboardWrite) return await window.stewardPty.clipboardWrite(text); } catch (e) {}
+    try { return await copyText(text); } catch (e) { return false; }
+  }
   window.copyTermScreen = async function () {
     const w = windows[activeIdx] || windows[0]; if (!w) { toast('没有终端窗口'); return; }
+    const t = terms[w.key];
     try {
-      // 有选区就复制选区，否则抓整屏
-      let text = ''; const t = terms[w.key];
-      if (t && t.term && t.term.hasSelection && t.term.hasSelection()) text = t.term.getSelection();
-      if (!text) text = (await window.stewardPty.capture(w.key) || '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-      if (!text) { toast('没抓到内容'); return; }
-      const ok = await window.stewardPty.clipboardWrite(text);   // 走 Electron 原生剪贴板(sandbox 下 navigator.clipboard 会失效)
-      toast(ok ? ('已复制 ' + text.split('\n').length + ' 行到剪贴板') : '复制失败');
-    } catch (e) { toast('复制失败：' + (e.message || e)); }
+      let text = '', src = '';
+      if (t && t.term && t.term.hasSelection && t.term.hasSelection()) { text = t.term.getSelection(); src = '选区'; }
+      if (!text && t && t.term) { text = readTermScreen(t.term); src = '整屏'; }            // 渲染端读 buffer(最稳)
+      if (!text) { text = (await window.stewardPty.capture(w.key) || '').trim(); src = '整屏·兜底'; }  // headless 兜底
+      if (!text) { toast('没抓到内容(选区空、缓冲也空)'); return; }
+      const ok = await writeClip(text);
+      toast(ok ? ('已复制 ' + src + ' ' + text.split('\n').length + ' 行') : '写剪贴板失败(clipboardWrite=false)');
+    } catch (e) { toast('复制异常：' + (e && e.message || e)); }
   };
   // 原 setInterval 捕获了旧 pollWinStates 引用 → 它会拉 /api/windows(空)覆盖状态。
   // 这里给 dashboard 暴露一个开关函数；并自起一个 native 轮询。
