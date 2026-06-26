@@ -37,6 +37,9 @@
       } catch (e) {}
       return true;
     }); } catch (e) {}
+    // 双保险：选中文字即写入原生剪贴板(不依赖 OSC52/claude)。120ms 防抖。
+    let _selTimer = null;
+    try { term.onSelectionChange(() => { const s = term.getSelection(); if (!s) return; clearTimeout(_selTimer); _selTimer = setTimeout(() => { try { writeClip(s); } catch (e) {} }, 120); }); } catch (e) {}
     const doFit = () => { try { fit && fit.fit(); window.stewardPty.resize(key, term.cols, term.rows); } catch (e) {} };
     setTimeout(doFit, 60);
     term.onData(d => window.stewardPty.write(key, d));
