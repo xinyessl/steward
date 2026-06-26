@@ -1517,7 +1517,7 @@ loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
 function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return;
   if(window.STEWARD_VERSION){ el.textContent='v'+window.STEWARD_VERSION; return; }   // 桌面端=应用版本
-  fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = (j.version||'web') + (j.version?' · web':''); }).catch(()=>{ el.textContent='web'; });   // 网页端=仓库 git tag
+  fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = j.version || ''; }).catch(()=>{ el.textContent=''; });   // 网页端=仓库 git tag(已含 v 前缀)
 }
 showAppVersion();
 // 主题：明亮 / 暗黑 / 跟随系统
