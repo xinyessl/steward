@@ -338,7 +338,7 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="sp"></div>
   <div class="gen" id="gen">—</div>
   <div class="bell" onclick="toggleInbox()" title="需要你介入的事项"><i class="ti ti-bell"></i><span class="badge" id="inbox-badge" style="display:none">0</span></div>
-  <button class="rf" onclick="openOverview()" title="进度总览（spec 统计 + 优先级里程碑）"><i class="ti ti-chart-bar"></i> 进度</button>
+  <button class="rf" onclick="openOverview()" title="进度总览（任务清单完成情况 + spec 文档验收情况）"><i class="ti ti-chart-bar"></i> 进度</button>
   <button class="rf" onclick="editLessons()" title="Steward 全局经验库（跨项目共享·开发 agent 开工前都会读）"><i class="ti ti-book"></i> 经验库</button>
   <button class="rf" onclick="refreshAll()"><i class="ti ti-refresh"></i> 刷新</button>
 </div>
@@ -485,9 +485,12 @@ body.resizing #term-host iframe{pointer-events:none}
   <div class="modal-bd">
     <div class="modal-h"><span class="mt"><i class="ti ti-chart-bar" style="margin-right:6px"></i>进度总览</span><span class="modal-x" onclick="closeOverview()"><i class="ti ti-x"></i></span></div>
     <div class="modal-body">
+      <div class="sec"><i class="ti ti-list-check"></i> 任务清单完成情况（主线）</div>
+      <div class="kpis" id="ov-task-kpis"></div>
+      <div class="card" id="ov-task-bars" style="margin-top:6px"></div>
+      <div class="sec" style="margin-top:16px"><i class="ti ti-book-2"></i> spec 文档验收情况（系统参考·按优先级）</div>
       <div class="kpis" id="kpis"></div>
       <div id="blk"></div>
-      <div class="sec"><i class="ti ti-layout-dashboard"></i> 全局总览（按优先级里程碑）</div>
       <div class="card" id="overview" style="margin-top:6px"></div>
     </div>
   </div>
@@ -1386,7 +1389,21 @@ try{
     }
   };
 }catch(e){}
-function openOverview(){ document.getElementById('ov-modal').classList.add('on'); }
+function renderOverviewTasks(){   // 进度总览·任务清单完成情况(来自批次)
+  const ts=allTasks();
+  const done=ts.filter(t=>t.status==='done').length, doing=ts.filter(t=>t.status==='doing').length, todo=ts.filter(t=>t.status==='todo').length;
+  const pc=ts.length?Math.round(done/ts.length*100):0;
+  const k=document.getElementById('ov-task-kpis');
+  if(k) k.innerHTML=[['任务总数',ts.length,''],['已完成',done,'ok'],['进行中',doing,'pri'],['待办',todo,'wn'],['完成率',pc+'%','pri']]
+    .map(x=>`<div class="kpi"><div class="l">${x[0]}</div><div class="v ${x[2]}">${x[1]}</div></div>`).join('');
+  const bars=document.getElementById('ov-task-bars'); if(!bars)return;
+  const order=[...batches].sort((a,b)=>(b.importedAt||0)-(a.importedAt||0));
+  bars.innerHTML = order.length ? order.map(b=>{
+    const tot=(b.tasks||[]).length, d=(b.tasks||[]).filter(t=>t.status==='done').length, p=tot?Math.round(d/tot*100):0, sm=srcMeta(b.source);
+    return `<div class="mrow"><div class="ml" style="display:flex;gap:5px;align-items:center;min-width:0"><span class="batch-src ${sm.cls}"><i class="ti ${sm.ic}"></i></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.title||'(未命名进件)')}</span></div><div class="mbar"><div class="mfill" style="width:${p}%"></div></div><div class="mv">${d}/${tot}</div></div>`;
+  }).join('') : '<div class="sst" style="padding:6px">还没有任务批次。终端跑 /intake 或左栏手动加。</div>';
+}
+function openOverview(){ document.getElementById('ov-modal').classList.add('on'); renderOverviewTasks(); }
 function closeOverview(){ document.getElementById('ov-modal').classList.remove('on'); }
 // ===== 任务清单（进件批次模型 · 项目级 · 存 docs/tasks.json 的 batches · 本地不入库） =====
 let batches=[];
