@@ -467,7 +467,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <!-- spec 查看弹窗 -->
 <div class="modal" id="spec-modal" onclick="if(event.target===this)closeSpec()">
   <div class="modal-bd">
-    <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
+    <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><span class="modal-x" id="spec-allsec" onclick="toggleAllSpecSecs()" title="展开 / 收起全部章节"><i class="ti ti-chevrons-down" id="spec-allsec-ic"></i></span><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
     <div class="modal-body md" id="spec-mbody"></div>
   </div>
 </div>
@@ -657,6 +657,13 @@ function makeCollapsible(root){
   root.innerHTML=''; root.appendChild(frag);
 }
 function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); }
+function toggleAllSpecSecs(){   // spec 详情弹窗：一键展开/收起全部章节(.md-sec)
+  const body=document.getElementById('spec-mbody'); if(!body)return;
+  const secs=[...body.querySelectorAll('.md-sec')]; if(!secs.length)return;
+  const allCol=secs.every(s=>s.classList.contains('collapsed'));
+  secs.forEach(s=>s.classList.toggle('collapsed', !allCol));   // 全收起→展开全部；否则收起全部
+  const ic=document.getElementById('spec-allsec-ic'); if(ic) ic.className='ti '+(allCol?'ti-chevrons-up':'ti-chevrons-down');
+}
 // 页面内确认弹窗（替代原生 confirm）
 let _confirmCb=null;
 function uiConfirm(msg,onOk,opts){

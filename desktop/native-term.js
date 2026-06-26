@@ -111,14 +111,27 @@
   window.pollWinStates = nativePoll;                 // 后续若有按 window 调用的，走 native
   setInterval(nativePoll, 1500);                      // 自起轮询(原 interval 捕获的旧引用无害：/api/windows 返回空，但会被本轮询覆盖)
 
+  const _building = new Set();   // 防并发重复建首窗(startup 多处调 loadTerminal 会双开)
+  async function openLatestOrNew() {   // 没窗口时：恢复该项目最近一次历史对话，没有则开新对话
+    try {
+      const p = PROJECTS.find(x => x.id === PROJECT) || {};
+      const r = await (await fetch('/api/claude-sessions?path=' + encodeURIComponent(p.path || '') + '&t=' + Date.now())).json();
+      const ss = (r.sessions || []).slice().sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+      if (ss.length) { await openSession(ss[0].id, (ss[0].preview || '历史对话').slice(0, 14)); return; }
+    } catch (e) {}
+    await newWindow();
+  }
   window.loadTerminal = async function () {
     const msg = document.getElementById('term-msg');
     if (!PROJECT) { if (msg) { msg.style.display = 'grid'; msg.innerHTML = '还没有纳管任何项目。点右上角 <b>「新增项目」</b>。'; } return; }
     if (msg) msg.style.display = 'none';
     windows = projWins[PROJECT] || (projWins[PROJECT] = []);            // 取该项目的窗口组（不销毁其它项目的 pty/DOM）
     document.querySelectorAll('#term-host .nterm').forEach(el => { el.style.display = 'none'; });   // 先全隐藏，activate 再显当前项目的
-    if (windows.length) { activeIdx = -1; renderTabs(); activate(windows.length - 1); }   // 已有窗口：恢复显示
-    else { activeIdx = -1; renderTabs(); await newWindow(); }                              // 该项目还没开过：开一个
+    if (windows.length) { activeIdx = -1; renderTabs(); activate(windows.length - 1); termBuiltFor = PROJECT; return; }   // 已有窗口：恢复显示
+    if (_building.has(PROJECT)) return;                                 // 并发已在建首窗 → 跳过，防双开
+    _building.add(PROJECT);
+    try { activeIdx = -1; renderTabs(); await openLatestOrNew(); }      // 没窗口：恢复最近历史对话/新对话
+    finally { _building.delete(PROJECT); }
     termBuiltFor = PROJECT;
   };
 
