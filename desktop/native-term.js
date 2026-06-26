@@ -29,6 +29,14 @@
       }
       return true;
     }); } catch (e) {}
+    // OSC 52：claude(及很多 CLI)发这个转义序列让终端写剪贴板。xterm 默认不处理 → 所以"copied"了却粘不出。这里接管，解码后写原生剪贴板。
+    try { term.parser.registerOscHandler(52, (data) => {
+      try {
+        const i = data.indexOf(';'); const b64 = i >= 0 ? data.slice(i + 1) : data;
+        if (b64 && b64 !== '?') { let txt = ''; try { txt = decodeURIComponent(escape(atob(b64))); } catch (x) { try { txt = atob(b64); } catch (y) { txt = ''; } } if (txt) writeClip(txt); }
+      } catch (e) {}
+      return true;
+    }); } catch (e) {}
     const doFit = () => { try { fit && fit.fit(); window.stewardPty.resize(key, term.cols, term.rows); } catch (e) {} };
     setTimeout(doFit, 60);
     term.onData(d => window.stewardPty.write(key, d));
@@ -51,13 +59,23 @@
     if (!r || !r.ok) { toast((r && r.error) || '终端启动失败'); return; }
     addWindowDom(key, 0, '新对话 ' + (windows.length + 1));
   };
+  const _opening = new Set();   // 正在开的 sessionId，防并发把同一会话开两次
   window.openSession = async function (sessionId, label) {
     const hp = document.getElementById('hist-pop'); if (hp) hp.classList.remove('on');
-    const p = PROJECTS.find(x => x.id === PROJECT) || {};
-    const key = mkKey();
-    const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId });
-    if (!r || !r.ok) { toast((r && r.error) || '终端启动失败'); return; }
-    addWindowDom(key, 0, label || '历史对话');
+    if (sessionId) {
+      const ex = windows.findIndex(w => w.sessionId === sessionId);
+      if (ex >= 0) { activate(ex); return; }       // 该会话已开 → 切过去，不重复开
+      if (_opening.has(sessionId)) return;          // 正在开同一会话 → 跳过(防启动双开)
+      _opening.add(sessionId);
+    }
+    try {
+      const p = PROJECTS.find(x => x.id === PROJECT) || {};
+      const key = mkKey();
+      const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId });
+      if (!r || !r.ok) { toast((r && r.error) || '终端启动失败'); return; }
+      addWindowDom(key, 0, label || '历史对话');
+      if (windows.length) windows[windows.length - 1].sessionId = sessionId;   // 记录会话 id，供去重
+    } finally { if (sessionId) _opening.delete(sessionId); }
   };
   window.activate = function (idx) {
     if (idx < 0 || idx >= windows.length) return; activeIdx = idx;
