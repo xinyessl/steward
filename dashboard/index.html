@@ -351,7 +351,7 @@ body.resizing #term-host iframe{pointer-events:none}
     <div class="team" id="team"></div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
-      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<button class="mini-btn2" style="margin-left:auto" onclick="openSpecRef()" title="系统参考：查看 spec 结构 / 规约全貌（给 AI/人理解系统）"><i class="ti ti-book-2"></i> 系统参考</button></div>
+      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<button class="mini-btn2" style="margin-left:auto" onclick="openSpecRef()" title="系统说明书：这个系统有哪些功能模块、各自的规约/验收标准（spec），给 AI 和人快速了解全貌"><i class="ti ti-book-2"></i> 系统说明书</button></div>
       <div class="fbar" id="task-filter"></div>
       <div id="tasklist"></div>
     </div>
@@ -474,7 +474,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <!-- 系统参考抽屉：spec 结构 / 规约全貌（右侧滑出，常驻；点单个 spec → 详情走弹窗叠在其上） -->
 <div class="drawer-mask" id="specref-mask" onclick="closeSpecRef()"></div>
 <div class="drawer" id="specref-modal">
-  <div class="modal-h"><span class="mt"><i class="ti ti-book-2"></i> 系统参考 · spec（系统结构与规约 · 任务都回链到这里）</span><span class="modal-x" onclick="closeSpecRef()"><i class="ti ti-x"></i></span></div>
+  <div class="modal-h"><span class="mt"><i class="ti ti-book-2"></i> 系统说明书 · 功能模块与规约（spec · 任务都回链到这里）</span><span class="modal-x" onclick="closeSpecRef()"><i class="ti ti-x"></i></span></div>
   <div class="drawer-body">
     <div class="fbar" id="spec-filter"></div>
     <div id="specs"></div>
@@ -488,7 +488,7 @@ body.resizing #term-host iframe{pointer-events:none}
       <div class="sec"><i class="ti ti-list-check"></i> 任务清单完成情况（主线）</div>
       <div class="kpis" id="ov-task-kpis"></div>
       <div class="card" id="ov-task-bars" style="margin-top:6px"></div>
-      <div class="sec" style="margin-top:16px"><i class="ti ti-book-2"></i> spec 文档验收情况（系统参考·按优先级）</div>
+      <div class="sec" style="margin-top:16px"><i class="ti ti-book-2"></i> spec 文档验收情况（系统说明书·按优先级）</div>
       <div class="kpis" id="kpis"></div>
       <div id="blk"></div>
       <div class="card" id="overview" style="margin-top:6px"></div>
