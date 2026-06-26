@@ -612,7 +612,10 @@ function renderSpecs(){
   }
   if(pendingHighlight && document.getElementById('spec-row-'+pendingHighlight)){ const id=pendingHighlight; pendingHighlight=null; setTimeout(()=>highlightSpec(id),60); }   // 从通知点过来：定位高亮
 }
+let _fromSpecRef=false;
 async function openSpec(id){
+  const sr=document.getElementById('specref-modal');   // 从「系统参考」点进来：先收起列表弹窗，避免两个弹窗叠加
+  if(sr&&sr.classList.contains('on')){ _fromSpecRef=true; sr.classList.remove('on'); } else _fromSpecRef=false;
   const m=document.getElementById('spec-modal'), body=document.getElementById('spec-mbody');
   document.getElementById('spec-mt').textContent=id; document.getElementById('spec-mf').textContent='';
   body.innerHTML='<div class="sst">加载中…</div>'; m.classList.add('on');
@@ -648,7 +651,7 @@ function makeCollapsible(root){
   }
   root.innerHTML=''; root.appendChild(frag);
 }
-function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); }
+function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); if(_fromSpecRef){ _fromSpecRef=false; const sr=document.getElementById('specref-modal'); if(sr){ sr.classList.add('on'); renderSpecs(); } } }
 // 页面内确认弹窗（替代原生 confirm）
 let _confirmCb=null;
 function uiConfirm(msg,onOk,opts){
