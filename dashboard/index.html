@@ -230,6 +230,10 @@ body.resizing #term-host iframe{pointer-events:none}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,94vw);background:#fff;box-shadow:-10px 0 36px rgba(15,39,68,.2);z-index:90;transform:translateX(102%);transition:transform .22s ease;display:flex;flex-direction:column}
 .drawer.on{transform:translateX(0)}
 .drawer-body{flex:1;min-height:0;overflow:auto;padding:14px 18px;display:flex;flex-direction:column}
+.spec-search-wrap{display:flex;align-items:center;gap:7px;border:1px solid var(--c-bd);border-radius:9px;padding:7px 11px;margin-bottom:10px;color:var(--c-t3)}
+.spec-search-wrap:focus-within{border-color:var(--c-pri-b)}
+.spec-search-wrap input{flex:1;min-width:0;border:none;outline:none;font-size:13px;color:var(--c-t);background:transparent}
+.spec-search-x{cursor:pointer;font-size:16px;line-height:1;padding:0 2px;color:var(--c-t3)}.spec-search-x:hover{color:var(--c-dg)}
 .modal-body{overflow:auto;padding:18px 22px}
 /* markdown 渲染样式 */
 .md{font-size:13.5px;line-height:1.7;color:var(--c-t)}
@@ -467,7 +471,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <!-- spec 查看弹窗 -->
 <div class="modal" id="spec-modal" onclick="if(event.target===this)closeSpec()">
   <div class="modal-bd">
-    <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><span class="modal-x" id="spec-allsec" onclick="toggleAllSpecSecs()" title="展开 / 收起全部章节"><i class="ti ti-chevrons-down" id="spec-allsec-ic"></i></span><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
+    <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><button class="mini-btn2" id="spec-allsec" style="margin-right:8px" onclick="toggleAllSpecSecs()" title="展开 / 收起全部章节"><i class="ti ti-chevrons-down" id="spec-allsec-ic"></i> <span id="spec-allsec-tx">展开全部</span></button><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
     <div class="modal-body md" id="spec-mbody"></div>
   </div>
 </div>
@@ -476,6 +480,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <div class="drawer" id="specref-modal">
   <div class="modal-h"><span class="mt"><i class="ti ti-book-2"></i> 系统说明书 · 功能模块与规约（spec · 任务都回链到这里）</span><span class="modal-x" onclick="closeSpecRef()"><i class="ti ti-x"></i></span></div>
   <div class="drawer-body">
+    <div class="spec-search-wrap"><i class="ti ti-search"></i><input id="spec-search" type="text" placeholder="搜功能 / 模块 / 编号，快速定位…" oninput="setSpecSearch(this.value)"><span class="spec-search-x" onclick="document.getElementById('spec-search').value='';setSpecSearch('')" title="清空">×</span></div>
     <div class="fbar" id="spec-filter"></div>
     <div id="specs"></div>
   </div>
@@ -528,6 +533,8 @@ function mdHtml(t){const src=stripHeadingEmoji(t);const h=window.marked?marked.p
 let PROJECT='';
 let PROJECTS=[];
 let boardData=null, specFilter='all';   // 验收筛选：all/await(待验收)/doing(进行中)/done(已验收)
+let specSearch='';   // 系统说明书搜索关键词
+function setSpecSearch(v){ specSearch=v; renderSpecs(); }
 
 const ST_CN={todo:'未开始',doing:'进行中',pass:'通过',fail:'失败',wait:'待人'};
 // 分类：待验收=accept 节点为 wait；已验收=status accepted；其余算进行中
@@ -598,9 +605,11 @@ function renderSpecs(){
     + chips.map(([k,lb])=>
       `<span class="fchip ${k==='await'?'warn':''} ${specFilter===k?'on':''}" onclick="setSpecFilter('${k}')">${lb}<span class="n">${cnt[k]}</span></span>`).join('')
     + (groupByMod?`<span class="gtgl" onclick="toggleAllModules()" title="一键收起/展开所有模块"><i class="ti ti-${_allCol?'chevrons-down':'chevrons-up'}"></i> ${_allCol?'展开全部':'收起全部'}</span>`:'');   // 浮最右
-  const list=specs.filter(sp=>specFilter==='all'||specCat(sp)===specFilter);
+  const q=(specSearch||'').trim().toLowerCase();
+  let list=specs.filter(sp=>specFilter==='all'||specCat(sp)===specFilter);
+  if(q) list=list.filter(sp=>((sp.id||'')+' '+(sp.title||'')+' '+(sp.module||'')).toLowerCase().includes(q));   // 搜索：编号/标题/模块
   const el=document.getElementById('specs');
-  if(!list.length){ el.innerHTML=`<div class="sst" style="padding:8px 2px">该筛选下暂无 spec</div>`; }
+  if(!list.length){ el.innerHTML=`<div class="sst" style="padding:8px 2px">${q?'没有匹配「'+esc(specSearch)+'」的功能 / spec':'该筛选下暂无 spec'}</div>`; }
   else if(!groupByMod){ el.innerHTML=list.map(specRowHtml).join(''); }
   else {
     const groups={}, order=[];   // 按 module 分组
@@ -609,7 +618,7 @@ function renderSpecs(){
     order.sort((a,b)=>{ let ia=saved.indexOf(a),ib=saved.indexOf(b); ia=ia<0?1e9:ia; ib=ib<0?1e9:ib; return ia-ib; });
     lastModOrder=order.slice();
     el.innerHTML=order.map(k=>{
-      const items=groups[k], wait=items.filter(sp=>specCat(sp)==='await').length, collapsed=collapsedModules.has(k);
+      const items=groups[k], wait=items.filter(sp=>specCat(sp)==='await').length, collapsed=!q&&collapsedModules.has(k);
       const ek=encodeURIComponent(k), nsel=items.filter(sp=>selSpecs.has(sp.id)).length;
       const acts=`<span class="mgrp-acts" onclick="event.stopPropagation()">`
         +`<button class="mini-btn2" ${nsel>=2?'':'disabled'} onclick="mergeSel('${ek}')" title="把勾选的合并成一条（≥2）"><i class="ti ti-arrows-join"></i> 合并${nsel>=2?'('+nsel+')':''}</button>`
@@ -638,6 +647,8 @@ async function openSpec(id){
     }
     body.innerHTML = fmHtml + mdHtml(content);
     makeCollapsible(body);
+    const _ic=document.getElementById('spec-allsec-ic'); if(_ic)_ic.className='ti ti-chevrons-down';   // 默认全收起 → 按钮显"展开全部"
+    const _tx=document.getElementById('spec-allsec-tx'); if(_tx)_tx.textContent='展开全部';
     body.scrollTop=0;
   }catch(e){ body.innerHTML='<div class="sst">读取失败：'+e.message+'</div>'; }
 }
@@ -664,6 +675,7 @@ function toggleAllSpecSecs(){   // spec 详情弹窗：一键展开/收起全部
   const allCol=secs.every(s=>s.classList.contains('collapsed'));
   secs.forEach(s=>s.classList.toggle('collapsed', !allCol));   // 全收起→展开全部；否则收起全部
   const ic=document.getElementById('spec-allsec-ic'); if(ic) ic.className='ti '+(allCol?'ti-chevrons-up':'ti-chevrons-down');
+  const tx=document.getElementById('spec-allsec-tx'); if(tx) tx.textContent=allCol?'收起全部':'展开全部';
 }
 // 页面内确认弹窗（替代原生 confirm）
 let _confirmCb=null;
