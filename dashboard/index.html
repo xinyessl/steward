@@ -31,7 +31,7 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .tb{scrollbar-width:none}
 .projchip{background:rgba(255,255,255,.10);color:#cfe0f0;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .projchip:hover{background:rgba(255,255,255,.18)}
-.projchip.on{background:var(--c-card);color:#0F2744;border-color:#fff;font-weight:600}
+.projchip.on{background:#fff;color:#0F2744;border-color:#fff;font-weight:600}
 .projchip.dragover{outline:2px dashed #9ec5ec;outline-offset:2px}
 .projchip.dragging{opacity:.45}
 .pj-badge{background:var(--c-dg);color:#fff;border-radius:8px;font-size:10px;font-weight:700;min-width:15px;height:15px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe);line-height:1}
@@ -335,7 +335,7 @@ body.resizing #term-host iframe{pointer-events:none}
 <body>
 <div class="tb">
   <div class="mk"><i class="ti ti-robot"></i></div>
-  <div><div class="tt">Steward 控制台</div><div class="sub">文档驱动研发 · 多项目<span id="app-ver"></span></div></div>
+  <div><div class="tt">Steward 控制台</div><div class="sub"><span id="app-ver">…</span></div></div>
   <div class="projwrap">
     <select id="proj" class="projsel" onchange="onProj()"></select>
     <div id="proj-spread" class="projspread" style="display:none"></div>
@@ -1515,7 +1515,10 @@ function openSpecRef(){ const m=document.getElementById('specref-modal'),k=docum
 function closeSpecRef(){ const m=document.getElementById('specref-modal'),k=document.getElementById('specref-mask'); if(m)m.classList.remove('on'); if(k)k.classList.remove('on'); }
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
-function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return; const v=window.STEWARD_VERSION; el.textContent = v ? (' · v'+v) : ' · web'; }
+function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return;
+  if(window.STEWARD_VERSION){ el.textContent='v'+window.STEWARD_VERSION; return; }   // 桌面端=应用版本
+  fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = (j.version||'web') + (j.version?' · web':''); }).catch(()=>{ el.textContent='web'; });   // 网页端=仓库 git tag
+}
 showAppVersion();
 // 主题：明亮 / 暗黑 / 跟随系统
 function applyTheme(){

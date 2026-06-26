@@ -391,6 +391,10 @@ const server = http.createServer((req, res) => {
   if (req.headers.origin && !SELF_ORIGINS.has(req.headers.origin)) return send(res, 403, JSON.stringify({ error: 'cross-origin forbidden' }));
   const pid = url.searchParams.get('project');
   // --- API ---
+  if (url.pathname === '/api/version') {   // 网页端版本号 = 仓库最新 git tag(桌面端走 STEWARD_VERSION)
+    let v = ''; try { const r = spawnSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: ROOT, encoding: 'utf8' }); v = (r.stdout || '').trim(); } catch {}
+    return send(res, 200, JSON.stringify({ version: v }));
+  }
   if (url.pathname === '/api/projects') return send(res, 200, JSON.stringify({ projects: loadProjects() }));
   if (url.pathname === '/api/board') {
     const p = projById(pid); if (!p) return send(res, 200, '{"specs":[]}');
