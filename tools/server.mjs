@@ -775,6 +775,24 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/project-sync-methodology' && req.method === 'POST') {   // 把内置模板的命令+方法论覆盖刷新到该项目(导入老项目/对齐版本用)；CLAUDE.md 保留项目①段、自定义则不动
+    const p = projById(pid); if (!p) return send(res, 400, JSON.stringify({ ok: false, error: '项目不存在' }));
+    const T = path.join(ROOT, 'templates');
+    let cmds = 0, agents = 0, claudeMd = false;
+    try { const sd = path.join(T, '.claude/commands'), dd = path.join(p.path, '.claude/commands'); fs.mkdirSync(dd, { recursive: true }); for (const f of fs.readdirSync(sd)) if (f.endsWith('.md')) { fs.copyFileSync(path.join(sd, f), path.join(dd, f)); cmds++; } } catch {}
+    try { const sd = path.join(T, '.claude/agents'), dd = path.join(p.path, '.claude/agents'); fs.mkdirSync(dd, { recursive: true }); for (const f of fs.readdirSync(sd)) if (f.endsWith('.md')) { fs.copyFileSync(path.join(sd, f), path.join(dd, f)); agents++; } } catch {}
+    try {
+      const tpl = fs.readFileSync(path.join(T, 'CLAUDE.md'), 'utf8'), dest = path.join(p.path, 'CLAUDE.md');
+      const START = '## ① 本项目信息', END = '## 0. 你的角色';
+      const sect = s => { const a = s.indexOf(START), b = s.indexOf(END); return (a >= 0 && b > a) ? s.slice(a, b) : null; };
+      const ti = sect(tpl);
+      let cur = null; try { cur = fs.readFileSync(dest, 'utf8'); } catch {}
+      if (cur === null) { fs.writeFileSync(dest, tpl.split('{{PROJECT_NAME}}').join(p.name || '').split('{{PROJECT_ID}}').join(p.id || '')); claudeMd = true; }
+      else { const ci = sect(cur); if (ti && ci) { fs.writeFileSync(dest, tpl.replace(ti, ci)); claudeMd = true; } }
+    } catch {}
+    genBoard(p.path);
+    return send(res, 200, JSON.stringify({ ok: true, cmds, agents, claudeMd }));
+  }
   if (url.pathname === '/api/project-remove' && req.method === 'POST') {   // 移除项目 = 取消纳管 + 关该项目终端；不删磁盘文件
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
       let id = ''; try { id = (JSON.parse(buf).id || '').trim(); } catch {}
