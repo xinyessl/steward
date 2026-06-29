@@ -1536,10 +1536,26 @@ function closeSpecRef(){ const m=document.getElementById('specref-modal'),k=docu
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
 function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return;
-  if(window.STEWARD_VERSION){ el.textContent='v'+window.STEWARD_VERSION; return; }   // 桌面端=应用版本
+  if(window.STEWARD_VERSION){ el.textContent='v'+window.STEWARD_VERSION;   // 桌面端=应用版本
+    if(window.stewardPty&&window.stewardPty.checkCodeUpdate){ el.style.cursor='pointer'; el.title='点击检查代码更新（只更新代码，免重下整包）'; el.onclick=doCodeUpdate; }
+    return; }
   fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = j.version || ''; }).catch(()=>{ el.textContent=''; });   // 网页端=仓库 git tag(已含 v 前缀)
 }
 showAppVersion();
+// 代码热更新(#32·桌面端)：点版本号检查 → 下载校验 → 重启生效
+async function doCodeUpdate(){
+  if(!(window.stewardPty&&window.stewardPty.checkCodeUpdate)){ toast('仅桌面客户端支持'); return; }
+  toast('检查代码更新中…');
+  const r=await window.stewardPty.checkCodeUpdate();
+  if(!r.ok){ toast('检查失败：'+(r.error||'')); return; }
+  if(!r.hasUpdate){ toast('已是最新代码（'+r.current+'）'); return; }
+  if(!r.shellOk){ toast('有新版 '+r.latest+'，但需下载完整安装包（壳要更新）'); return; }
+  if(!confirm('发现新代码 '+r.latest+'（当前 '+r.current+'）。\n只更新代码（几百 KB）、不重下整包；下载校验后重启生效。继续?')) return;
+  toast('下载并校验中…');
+  const a=await window.stewardPty.applyCodeUpdate();
+  if(!a.ok){ toast('更新失败：'+(a.error||'')); return; }
+  if(confirm('已更新到 '+a.version+'。现在重启生效?')) window.stewardPty.relaunch();
+}
 // 主题：明亮 / 暗黑 / 跟随系统
 function applyTheme(){
   const t=(()=>{try{return localStorage.getItem('theme')||'system'}catch{return 'system'}})();

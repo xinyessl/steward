@@ -69,14 +69,21 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: artifacts }
-      - name: 发布 Release（附 dmg / exe）
+      - name: 打代码热更包(tools+dashboard+templates) + version.json(含 SHA256)
+        run: |
+          mkdir -p codepkg
+          cp -r tools dashboard templates lessons.md CLAUDE.md codepkg/
+          tar -czf steward-code.tar.gz -C codepkg .
+          node -e "const c=require('crypto'),fs=require('fs');const b=fs.readFileSync('steward-code.tar.gz');fs.writeFileSync('version.json',JSON.stringify({version:process.env.GITHUB_REF_NAME,sha256:c.createHash('sha256').update(b).digest('hex'),requiresShell:'v0.2.17'}))"
+      - name: 发布 Release（附 dmg / exe + 代码热更包）
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            artifacts/*/*.dmg artifacts/*/*.exe \
+            artifacts/*/*.dmg artifacts/*/*.exe steward-code.tar.gz version.json \
             --repo "$GITHUB_REPOSITORY" \
             --title "Steward $GITHUB_REF_NAME" \
             --generate-notes

@@ -8,9 +8,25 @@ const fs = require('node:fs');
 const os = require('node:os');
 const http = require('node:http');
 const { fork, spawnSync } = require('node:child_process');
+const crypto = require('node:crypto');
 
-// 开发：desktop 的上级=仓库根；打包后：随 app 一起放进 resources/steward（见 package.json extraResources）
-const ROOT = app.isPackaged ? path.join(process.resourcesPath, 'steward') : path.resolve(__dirname, '..');
+// 代码热更新(#32)：壳(Electron+node-pty+xterm)不变，只更 tools/dashboard/templates(纯 JS/HTML)。
+// ROOT 优先用 userData 里下载校验过的新代码(且壳兼容)，否则用内置；任何异常一律回退内置，绝不让 app 起不来。
+const BUILTIN_ROOT = app.isPackaged ? path.join(process.resourcesPath, 'steward') : path.resolve(__dirname, '..');
+const CODE_DIR = path.join(app.getPath('userData'), 'steward-code');
+function cmpVer(a, b) { const p = s => String(s || '').replace(/^v/, '').split('.').map(n => parseInt(n) || 0); const x = p(a), y = p(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; }
+function resolveRoot() {
+  try {
+    if (app.isPackaged && fs.existsSync(path.join(CODE_DIR, 'tools', 'server.mjs')) && fs.existsSync(path.join(CODE_DIR, 'dashboard', 'index.html'))) {
+      let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(CODE_DIR, 'version.json'), 'utf8')); } catch {}
+      if (!meta.requiresShell || cmpVer(app.getVersion(), meta.requiresShell) >= 0) return CODE_DIR;   // 壳够新才用热更代码
+    }
+  } catch {}
+  return BUILTIN_ROOT;
+}
+const ROOT = resolveRoot();
+const UPDATE_BASE = 'https://github.com/xinyessl/steward/releases/latest/download';   // 只认官方 Release(HTTPS) + 下面 SHA256 校验
+function currentCodeVersion() { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8')).version || ('v' + app.getVersion()); } catch { return 'v' + app.getVersion(); } }
 const SERVER = path.join(ROOT, 'tools', 'server.mjs');
 const PORT = process.env.PORT || 5180;   // 桌面端用 5180，避开 web 版的 5178（同时开也不撞）
 let serverProc = null, mainWin = null;
@@ -167,6 +183,32 @@ ipcMain.handle('pty-kill', (e, { key }) => { const r = ptys.get(key); if (r) { t
 ipcMain.handle('pty-capture', (e, { key }) => { const r = ptys.get(key); return r ? serialize(r.term) : ''; });
 ipcMain.handle('clipboard-write', (e, { text }) => { try { clipboard.writeText(String(text || '')); return true; } catch { return false; } });   // 原生剪贴板：不受 sandbox/CSP/焦点限制(navigator.clipboard 在 sandbox 下会失效)
 ipcMain.handle('clipboard-read', () => { try { return clipboard.readText() || ''; } catch { return ''; } });   // 与 write 对称，供 Ctrl+Shift+V 自处理粘贴
+// 代码热更新(#32)：手动检查/应用；只认官方 Release + SHA256 校验 + 壳兼容门 + 写 userData(不碰只读 .app)
+ipcMain.handle('code-update-check', async () => {
+  try {
+    const meta = await (await fetch(UPDATE_BASE + '/version.json', { cache: 'no-store' })).json();
+    const shellOk = !meta.requiresShell || cmpVer(app.getVersion(), meta.requiresShell) >= 0;
+    return { ok: true, latest: meta.version, current: currentCodeVersion(), hasUpdate: cmpVer(meta.version, currentCodeVersion()) > 0, shellOk };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+});
+ipcMain.handle('code-update-apply', async () => {
+  try {
+    const meta = await (await fetch(UPDATE_BASE + '/version.json', { cache: 'no-store' })).json();
+    if (meta.requiresShell && cmpVer(app.getVersion(), meta.requiresShell) < 0) return { ok: false, error: '壳太旧，这次更新需下载完整安装包' };
+    const buf = Buffer.from(await (await fetch(UPDATE_BASE + '/steward-code.tar.gz')).arrayBuffer());
+    if (meta.sha256 && crypto.createHash('sha256').update(buf).digest('hex') !== meta.sha256) return { ok: false, error: '校验失败(SHA256 不匹配)，已中止' };
+    const ud = app.getPath('userData'), tgz = path.join(ud, 'steward-code.tar.gz'), tmp = path.join(ud, 'steward-code-tmp');
+    fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp, { recursive: true }); fs.writeFileSync(tgz, buf);
+    const r = spawnSync('tar', ['-xzf', tgz, '-C', tmp]); if (r.status !== 0) return { ok: false, error: '解压失败(tar)' };
+    const inner = fs.existsSync(path.join(tmp, 'tools')) ? tmp : path.join(tmp, 'steward');
+    if (!fs.existsSync(path.join(inner, 'tools', 'server.mjs')) || !fs.existsSync(path.join(inner, 'dashboard', 'index.html'))) return { ok: false, error: '更新包结构异常，已中止' };
+    fs.rmSync(CODE_DIR, { recursive: true, force: true }); fs.renameSync(inner, CODE_DIR);
+    try { fs.writeFileSync(path.join(CODE_DIR, 'version.json'), JSON.stringify(meta)); } catch {}
+    try { fs.rmSync(tgz, { force: true }); fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
+    return { ok: true, version: meta.version };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+});
+ipcMain.handle('app-relaunch', () => { app.relaunch(); app.exit(0); });
 ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, title: r.title || '', activity: r.activity || '' })));
 
 // ---------- 3) 窗口 + 注入 native-term ----------
