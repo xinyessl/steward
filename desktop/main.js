@@ -86,6 +86,15 @@ function allowedCwd(cwd) {
   try { paths = (JSON.parse(fs.readFileSync(path.join(dataDir, 'projects.json'), 'utf8')).projects || []).map(p => p.path); } catch {}
   return paths.some(p => { try { const rp = fs.realpathSync(p); return real === rp || real.startsWith(rp + path.sep); } catch { return false; } });
 }
+// 项目级本地环境变量(真实库连接/服务地址/key)：从 ~/.steward/env.json 读，注入终端 → 不进项目 git
+function projEnvVars(projectId) {
+  if (!projectId) return {};
+  try {
+    const dataDir = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
+    const v = ((JSON.parse(fs.readFileSync(path.join(dataDir, 'env.json'), 'utf8'))[projectId]) || {}).vars || {};
+    const o = {}; for (const [k, val] of Object.entries(v)) if (k) o[k] = String(val); return o;
+  } catch { return {}; }
+}
 function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   if (!pty) return { ok: false, error: 'node-pty 未安装/未编译，先在 desktop/ 跑 npm install' };
   if (ptys.has(key)) return { ok: true };
@@ -94,7 +103,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
   let proc;
   try {
-    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } };
+    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, ...projEnvVars(projectId), PATH: SHELL_PATH || process.env.PATH } };
     if (process.platform === 'win32') {
       // claude 是 .cmd shim，ConPTY/CreateProcess 不能直接跑 .cmd → 经 cmd.exe /c 启动(按 PATHEXT 解析 .cmd)
       proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', ['/c', ['claude', ...args].join(' ')], opts);

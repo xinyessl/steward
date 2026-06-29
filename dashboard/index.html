@@ -342,6 +342,7 @@ body.resizing #term-host iframe{pointer-events:none}
     <button class="projtgl" id="proj-toggle" onclick="toggleProjView()" title="切换：下拉 / 全部铺开"><i class="ti ti-layout-grid"></i></button>
     <button class="projtgl" id="proj-rename" onclick="renameProject()" title="重命名当前项目"><i class="ti ti-pencil"></i></button>
     <button class="projtgl" id="proj-feishu" onclick="openFeishuCfg()" title="飞书文档接入配置（当前项目）"><i class="ti ti-cloud-cog"></i></button>
+    <button class="projtgl" id="proj-env" onclick="openEnvCfg()" title="环境变量（本地·按机器存，不进项目 git）：真实库连接 / 服务地址 / API Key —— 注入该项目终端的 claude"><i class="ti ti-variable"></i></button>
     <button class="projtgl" id="proj-sync" onclick="syncMethodology()" title="同步方法论到本项目：从内置模板覆盖刷新命令(/intake 等)+ CLAUDE.md(保留本项目①信息)。导入老项目/对齐版本时用"><i class="ti ti-refresh-dot"></i></button>
     <button class="projtgl" id="proj-del" onclick="delCurrentProject()" title="移除当前项目（仅取消纳管，不删磁盘文件）"><i class="ti ti-trash"></i></button>
   </div>
@@ -415,6 +416,18 @@ body.resizing #term-host iframe{pointer-events:none}
       </div>
     </div>
     <div class="amf"><span id="fk-err" style="margin-right:auto;font-size:12px;align-self:center"></span><button class="abtn ghost" id="fk-test" onclick="testFeishuCfg()">测试连接</button><button class="abtn ghost" onclick="closeFeishuCfg()">取消</button><button class="abtn" id="fk-submit" onclick="saveFeishuCfg()">保存</button></div>
+  </div>
+</div>
+<div class="amask" id="envmask">
+  <div class="amodal" style="height:auto;max-height:82vh;width:520px">
+    <div class="amh"><i class="ti ti-variable" style="margin-right:8px;color:var(--c-pri)"></i>环境变量（本地） · <span id="env-proj"></span><span class="amx" onclick="closeEnvCfg()">&times;</span></div>
+    <div style="padding:18px;overflow:auto;flex:1;min-height:0">
+      <div class="pf"><label>每行一个 KEY=VALUE（真实库连接 / 服务地址 / API Key 等）</label>
+        <textarea id="env-ta" rows="10" spellcheck="false" placeholder="DB_HOST=localhost&#10;DB_PORT=5432&#10;DB_NAME=zenlin&#10;DB_USER=dev&#10;DB_PASSWORD=你的密码&#10;API_BASE=http://localhost:8080" style="width:100%;box-sizing:border-box;font-family:var(--fe);font-size:12.5px;border:1px solid var(--c-bds);border-radius:8px;padding:10px;outline:none;resize:vertical;background:var(--c-card);color:var(--c-t)"></textarea>
+      </div>
+      <div class="pf" style="font-size:11.5px;color:var(--c-t3);line-height:1.7">这些是<b>因人/因环境而异</b>的配置（各人本地库、各自的服务地址/密钥）。<b>按机器存 <code>~/.steward/env.json</code>，绝不进项目 git</b>；运行时注入该项目终端的 claude（连真库冒烟、调本地服务等用）。KEY 需字母/下划线开头。清空保存 = 删除本项目环境变量。改动后<b>新开的终端窗口</b>才生效。</div>
+    </div>
+    <div class="amf"><span id="env-err" style="margin-right:auto;font-size:12px;align-self:center"></span><button class="abtn ghost" onclick="closeEnvCfg()">取消</button><button class="abtn" onclick="saveEnvCfg()">保存</button></div>
   </div>
 </div>
 <div class="amask" id="pmask">
@@ -1245,6 +1258,26 @@ async function openFeishuCfg(){
 }
 function toggleSecret(){ const inp=document.getElementById('fk-secret'), ic=document.querySelector('#fk-eye i'); const masked=inp.type==='password'; inp.type=masked?'text':'password'; if(ic)ic.className='ti '+(masked?'ti-eye-off':'ti-eye'); }
 function closeFeishuCfg(){ document.getElementById('fkmask').classList.remove('on'); }
+// 项目级本地环境变量(真实库/服务/key)：本地存、不进项目、运行时注入终端
+function openEnvCfg(){
+  if(!PROJECT){ toast('请先选一个项目'); return; }
+  const p=PROJECTS.find(x=>x.id===PROJECT)||{}; const pe=document.getElementById('env-proj'); if(pe)pe.textContent=p.name||PROJECT;
+  const err=document.getElementById('env-err'); if(err)err.textContent='';
+  fetch('/api/project-env?project='+PROJECT).then(r=>r.json()).then(j=>{ const v=j.vars||{}; document.getElementById('env-ta').value=Object.keys(v).map(k=>k+'='+v[k]).join('\n'); }).catch(()=>{ document.getElementById('env-ta').value=''; });
+  document.getElementById('envmask').classList.add('on');
+  setTimeout(()=>{ const t=document.getElementById('env-ta'); if(t)t.focus(); },30);
+}
+function closeEnvCfg(){ document.getElementById('envmask').classList.remove('on'); }
+async function saveEnvCfg(){
+  if(!PROJECT)return;
+  const txt=document.getElementById('env-ta').value||'', vars={};
+  txt.split('\n').forEach(line=>{ const s=line.trim(); if(!s||s.startsWith('#'))return; const i=s.indexOf('='); if(i<1)return; const k=s.slice(0,i).trim(), val=s.slice(i+1).trim(); if(/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) vars[k]=val; });
+  try{
+    const r=await (await fetch('/api/project-env-save?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vars})})).json();
+    if(r.ok){ toast('环境变量已保存（'+Object.keys(r.vars||{}).length+' 项）· 新开终端窗口生效'); closeEnvCfg(); }
+    else { const err=document.getElementById('env-err'); if(err)err.textContent='保存失败：'+(r.error||''); }
+  }catch(e){ const err=document.getElementById('env-err'); if(err)err.textContent='保存失败：'+(e.message||e); }
+}
 function fkForm(){ return { project:PROJECT, appId:document.getElementById('fk-appid').value.trim(), appSecret:document.getElementById('fk-secret').value, domain:document.getElementById('fk-domain').value.trim() }; }
 async function saveFeishuCfg(){
   const f=fkForm(); const btn=document.getElementById('fk-submit'); fkMsg(''); btn.disabled=true;
