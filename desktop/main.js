@@ -161,18 +161,22 @@ function notifyConfirm(r, key) {
   } catch {}
 }
 setInterval(() => {
+  const now = Date.now();
   for (const [key, r] of ptys) {
     if (!r.term) continue;
     const screen = serialize(r.term); const s = sig(screen);
-    // 忙判定:claude 工作时底部恒显「esc to interrupt」→ 直接认它;再叠"屏幕有变化";都没有则连续 2 次(~2.4s)才转空闲(迟滞防抖)
-    const changed = r.lastSig !== undefined && s !== r.lastSig;
-    // 工作信号:claude 干活时底部有「esc to interrupt」或 token 计数器「↑ 684 tokens」——比单纯比对屏幕更稳(消除闪 + 干完才转闲，待确认才轮得上)
-    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?/i.test(screen);
-    if (working || changed) { r.idleTicks = 0; r.busy = true; }
-    else if (r.lastSig !== undefined) { r.idleTicks = (r.idleTicks || 0) + 1; if (r.idleTicks >= 2) { if (r.busy) r.done = true; r.busy = false; } }
+    if (r.lastSig !== undefined && s !== r.lastSig) r.lastChange = now;   // 记录"最近一次屏幕变化"时刻
     r.lastSig = s;
+    // 工作信号(底部状态区):正在生成「esc to interrupt」/ token 计数「↑↓ N tokens」/ 后台子代理「background agents · Waiting for」
+    const tail = screen.split('\n').slice(-12).join('\n');
+    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|background agents?|Waiting for/i.test(tail);
+    // 待确认独立判定：菜单(❯ N.)/y-n 一出现立刻红，不再被 busy 卡住
     const wasConfirm = r.confirm;
-    r.confirm = !r.busy && isConfirm(screen);
+    r.confirm = isConfirm(screen);
+    // 忙 = (非待确认) 且 (有工作文案 或 10 秒内有过屏幕变化)。时间窗迟滞 → 后台代理间歇重绘也不闪
+    const wasBusy = r.busy;
+    r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 10000));
+    if (wasBusy && !r.busy && !r.confirm) r.done = true;
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
 }, 1200);

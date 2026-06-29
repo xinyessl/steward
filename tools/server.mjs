@@ -209,14 +209,18 @@ async function pollOne(w) {
   const out = await capturePane(w.tmuxSess);
   if (!out) return;                            // 本轮抓不到，保留旧状态
   const sig = sigFromPane(out);
-  // 工作信号:claude 干活时底部有「esc to interrupt」或 token 计数器「↑ 684 tokens」+ 屏幕变化;连续 2 次都无才转闲(迟滞防抖)
-  const changed = w.lastSig !== undefined && sig !== w.lastSig;
-  const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?/i.test(out);
-  if (working || changed) { w.idleTicks = 0; w.busy = true; }
-  else if (w.lastSig !== undefined) { w.idleTicks = (w.idleTicks || 0) + 1; if (w.idleTicks >= 2) { if (w.busy) { w.done = true; w.doneAt = Date.now(); } w.busy = false; } }
+  const now = Date.now();
+  if (w.lastSig !== undefined && sig !== w.lastSig) w.lastChange = now;   // 记录最近一次屏幕变化
   w.lastSig = sig;
+  // 工作信号(底部状态区):生成中「esc to interrupt」/ token 计数「↑↓ N tokens」/ 后台子代理「background agents · Waiting for」
+  const tail = out.split('\n').slice(-12).join('\n');
+  const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|background agents?|Waiting for/i.test(tail);
   w.activity = activityFromPane(out);
-  w.confirm = !w.busy && confirmFromPane(out);   // 空闲且在等确认/选择 → 红；否则空闲 → 黄
+  w.confirm = confirmFromPane(out);   // 待确认独立判定:菜单/y-n 一出现即红，不被 busy 卡住
+  // 忙 = 非待确认 且 (有工作文案 或 10 秒内有过变化)。时间窗迟滞 → 后台代理间歇重绘也不闪
+  const wasBusy = w.busy;
+  w.busy = !w.confirm && (working || (w.lastChange && now - w.lastChange < 10000));
+  if (wasBusy && !w.busy && !w.confirm) { w.done = true; w.doneAt = Date.now(); }
   if (!w.title) {  // 会话话题（一次性）：resume 的读会话文件 preview，新窗口从全量屏幕抓第一句用户输入
     if (w.sessionId) { try { w.title = sessionPreview(path.join(os.homedir(), '.claude', 'projects', encodeCwd((projById(w.projectId) || {}).path || ''), w.sessionId + '.jsonl')); } catch {} }
     if (!w.title) w.title = titleFromPane(await capturePane(w.tmuxSess, true));
