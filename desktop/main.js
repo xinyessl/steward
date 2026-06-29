@@ -71,9 +71,10 @@ function serialize(term) {
 // 与 server.mjs 同套启发式：判忙/判等确认/抽话题与在干啥
 function sig(s) { return s.split('\n').filter(l => !l.includes('⠀') && !l.includes('⏵⏵') && !/^\s*\d+h\s/.test(l) && !/^[\s─-]*$/.test(l)).join('\n'); }
 function isConfirm(s) {
-  const tail = s.split('\n').slice(-25).join('\n');
-  // y/n 确认 | 选择菜单(❯ 1. / Enter to select / ↑↓ navigate) | 是否继续/确认 等
-  return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|↑\/↓|to select|to navigate|Do you want to|是否(继续|确认|要)|确认[?？]|\bProceed\?|press \w+ to (confirm|continue)|❯\s*\d+[.\)]|^\s*\d+[.:]\s+(Yes|No|是|否)/m.test(tail);
+  // 只看 live 提示区(最后 ~6 行非空)+ 窄信号:y/n、编号菜单光标(❯ 1.)、英文权限框。
+  // 不再匹配中文散文(是否/确认/?)——claude 确认框是英文 UI/编号菜单，中文叙述会误报(#33)
+  const tail = s.split('\n').map(l => l.trim()).filter(Boolean).slice(-6).join('\n');
+  return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|❯\s*\d+[.\)]|\bDo you want to (proceed|continue)|press \w+ to (confirm|continue)/i.test(tail);
 }
 
 // cwd 白名单：只允许「不传(→ homedir 默认)」或「某个已纳管项目目录及其子目录」——

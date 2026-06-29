@@ -311,6 +311,10 @@ body.resizing #term-host iframe{pointer-events:none}
 .merge-sel{display:block;width:calc(100% - 40px);margin:12px 20px 0;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;background:var(--c-card);color:var(--c-t);cursor:pointer}.merge-sel:focus{border-color:var(--c-pri)}
 .pf{margin-bottom:13px}.pf label{display:block;font-size:12.5px;color:var(--c-t2);margin-bottom:5px;font-weight:500}
 .pf input{width:100%;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;font-family:inherit}.pf input:focus{border-color:var(--c-pri)}
+/* 暗色:表单控件吃主题 token(否则 UA 白底黑字)。类选择器更具体的(如 .projsel)仍按自己的来 */
+input,textarea,select{background:var(--c-card);color:var(--c-t)}
+input::placeholder,textarea::placeholder{color:var(--c-t3)}
+:root[data-theme="dark"] input,:root[data-theme="dark"] textarea,:root[data-theme="dark"] select{color-scheme:dark}
 .segctl{display:flex;gap:8px}
 .seg{flex:1;border:1px solid var(--c-bds);background:var(--c-card);color:var(--c-t2);border-radius:8px;padding:11px 8px;font-size:13px;cursor:pointer;text-align:center;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px}
 .seg:hover{border-color:var(--c-pri)}
@@ -629,6 +633,7 @@ function renderSpecs(){
       const items=groups[k], wait=items.filter(sp=>specCat(sp)==='await').length, collapsed=!q&&collapsedModules.has(k);
       const ek=encodeURIComponent(k), nsel=items.filter(sp=>selSpecs.has(sp.id)).length;
       const acts=`<span class="mgrp-acts" onclick="event.stopPropagation()">`
+        +`<button class="mini-btn2" ${nsel>=1?'':'disabled'} onclick="citeSpecs('${ek}')" title="把勾选的 spec 引用进对话框（≥1）"><i class="ti ti-quote"></i> 引用${nsel>=1?'('+nsel+')':''}</button>`
         +`<button class="mini-btn2" ${nsel>=2?'':'disabled'} onclick="mergeSel('${ek}')" title="把勾选的合并成一条（≥2）"><i class="ti ti-arrows-join"></i> 合并${nsel>=2?'('+nsel+')':''}</button>`
         +`<button class="mini-btn2 danger" ${nsel>=1?'':'disabled'} onclick="delSel('${ek}')" title="删除勾选的（≥1）"><i class="ti ti-trash"></i> 删除${nsel>=1?'('+nsel+')':''}</button>`
         +`</span>`;
@@ -697,7 +702,16 @@ function uiConfirm(msg,onOk,opts){
 }
 function closeConfirm(){ document.getElementById('confirm-modal').classList.remove('on'); _confirmCb=null; }
 document.getElementById('confirm-ok').addEventListener('click',()=>{ const cb=_confirmCb; closeConfirm(); if(cb)cb(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSpec(); closeConfirm(); closeMerge(); closeOverview(); } });
+document.addEventListener('keydown',e=>{ if(e.key!=='Escape')return;
+  // 关"最上层"浮层(按 z-index),叠层可逐层关;覆盖所有 modal/抽屉/amask 弹窗
+  const open=[...document.querySelectorAll('.modal.on,.drawer.on,.amask.on')];
+  if(open.length){ open.sort((a,b)=>(parseInt(getComputedStyle(b).zIndex)||0)-(parseInt(getComputedStyle(a).zIndex)||0));
+    const top=open[0]; top.classList.remove('on');
+    if(top.classList.contains('drawer')){ const m=document.getElementById('specref-mask'); if(m)m.classList.remove('on'); }   // 抽屉连遮罩一起关
+    e.stopPropagation(); return; }
+  // 没有弹窗:关浮层(命令/历史/收件箱)
+  ['cmd-pop','hist-pop','inbox-pop'].forEach(id=>{ const el=document.getElementById(id); if(el)el.classList.remove('on'); });
+});
 function acceptSpec(spec){
   uiConfirm('将把该 spec 置为 accepted 并标记验收通过。',async()=>{
     try{
@@ -749,6 +763,12 @@ let selSpecs=new Set(), mergeIds=[];
 function modKey(sp){ return (sp.module&&sp.module.trim())||'（未标模块）'; }
 function toggleSel(id){ if(selSpecs.has(id))selSpecs.delete(id); else selSpecs.add(id); renderSpecs(); }
 function specsInModule(ek){ const k=decodeURIComponent(ek); return (boardData&&boardData.specs||[]).filter(sp=>modKey(sp)===k && selSpecs.has(sp.id)).map(sp=>sp.id); }
+function citeSpecs(ek){   // 把勾选的 spec 引用进对话框(复用 prefillTerm)，并关抽屉、焦点落终端
+  const ids=specsInModule(ek); if(!ids.length){ toast('先勾选 spec'); return; }
+  prefillTerm('参考这些 spec（按编号去 docs/specs 读全文）：'+ids.join('、')+'。');
+  selSpecs.clear(); renderSpecs(); closeSpecRef();
+  toast('已把 '+ids.length+' 条 spec 引用进对话框');
+}
 function delSel(ek){
   const ids=specsInModule(ek); if(!ids.length)return;
   uiConfirm('将删除选中的 '+ids.length+' 条 spec（'+ids.join('、')+'）。涉及依赖/代码/测试——点确定会切到终端预填删除指令、交 AI 按 §4.6 处理，你确认后回车执行，不直接删文件。',()=>{
