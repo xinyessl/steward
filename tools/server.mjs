@@ -25,8 +25,6 @@ const SELF_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PO
 // 用户数据目录（与工具本体隔离，像 VSCode）：项目注册表存这里，工具目录保持干净/可分享。可用 STEWARD_DATA 覆盖。
 const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
-const ENV_FILE = path.join(DATA_DIR, 'env.json');   // 项目级本地环境变量(真实库连接/服务地址/API key)——按机器存，绝不进项目 git
-function loadProjEnv() { try { return JSON.parse(fs.readFileSync(ENV_FILE, 'utf8')) || {}; } catch { return {}; } }
 const LESSONS_FILE = path.join(ROOT, 'lessons.md');   // Steward 经验库：放工具仓库根、提交进 git，随 steward 沉淀+共享（跨项目、跨人）
 try {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -60,7 +58,6 @@ function childEnv(projectId) {
   e.STEWARD_LESSONS = LESSONS_FILE;   // 让子 claude 知道 Steward 全局经验库在哪（兼容 STEWARD_DATA 覆盖）
   e.STEWARD_DATA = DATA_DIR;          // 让子进程脚本（如 feishu-fetch）找到 ~/.steward 数据目录
   if (projectId) e.STEWARD_PROJECT_ID = projectId; else delete e.STEWARD_PROJECT_ID;   // 当前终端属于哪个项目；projectId 缺失则删掉，绝不继承泄漏旧值
-  if (projectId) { const v = (loadProjEnv()[projectId] || {}).vars || {}; for (const [k, val] of Object.entries(v)) if (k) e[k] = String(val); }   // 注入项目级本地环境变量(真实库/服务/key) → claude 终端可见，但绝不进项目 git
   return e;
 }
 // 内嵌终端：每项目一个 ttyd（按 projects.json 顺序分配端口）
@@ -450,22 +447,6 @@ const server = http.createServer((req, res) => {
       j.batches = batches; j.items = [];
       try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
       send(res, 200, JSON.stringify({ ok: true, batches }));
-    });
-    return;
-  }
-  if (url.pathname === '/api/project-env') {   // 读项目级本地环境变量(真实库/服务/key)；仅 localhost
-    const c = loadProjEnv()[pid] || {};
-    return send(res, 200, JSON.stringify({ vars: c.vars || {} }));
-  }
-  if (url.pathname === '/api/project-env-save' && req.method === 'POST') {   // 存项目级本地环境变量到 ~/.steward/env.json(按机器·不入库)
-    if (!pid) return send(res, 400, JSON.stringify({ ok: false, error: '缺项目' }));
-    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
-      let b = {}; try { b = JSON.parse(buf); } catch {}
-      const vars = {}, src = (b && b.vars) || {};
-      if (src && typeof src === 'object') for (const [k, v] of Object.entries(src)) { const kk = String(k).trim(); if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(kk)) vars[kk] = String(v == null ? '' : v).slice(0, 4000); }
-      const m = loadProjEnv(); m[pid] = { vars };
-      try { fs.writeFileSync(ENV_FILE, JSON.stringify(m, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
-      send(res, 200, JSON.stringify({ ok: true, vars }));
     });
     return;
   }
