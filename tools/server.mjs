@@ -396,8 +396,9 @@ const server = http.createServer((req, res) => {
   if (req.headers.origin && !SELF_ORIGINS.has(req.headers.origin)) return send(res, 403, JSON.stringify({ error: 'cross-origin forbidden' }));
   const pid = url.searchParams.get('project');
   // --- API ---
-  if (url.pathname === '/api/version') {   // 网页端版本号 = 仓库最新 git tag(桌面端走 STEWARD_VERSION)
+  if (url.pathname === '/api/version') {   // 实际运行的"代码版本":git tag(网页/源码) → 否则热更包的 version.json(桌面热更后) → 否则空(回退壳版本)
     let v = ''; try { const r = spawnSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: ROOT, encoding: 'utf8' }); v = (r.stdout || '').trim(); } catch {}
+    if (!v) { try { v = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8')).version || ''; } catch {} }
     return send(res, 200, JSON.stringify({ version: v }));
   }
   if (url.pathname === '/api/projects') return send(res, 200, JSON.stringify({ projects: loadProjects() }));

@@ -1537,10 +1537,10 @@ function closeSpecRef(){ const m=document.getElementById('specref-modal'),k=docu
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
 function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return;
-  if(window.STEWARD_VERSION){ el.textContent='v'+window.STEWARD_VERSION;   // 桌面端=应用版本
-    if(window.stewardPty&&window.stewardPty.checkCodeUpdate){ el.style.cursor='pointer'; el.title='点击检查代码更新（只更新代码，免重下整包）'; el.onclick=doCodeUpdate; }
-    return; }
-  fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = j.version || ''; }).catch(()=>{ el.textContent=''; });   // 网页端=仓库 git tag(已含 v 前缀)
+  const shellVer = window.STEWARD_VERSION ? ('v'+window.STEWARD_VERSION) : '';   // 桌面壳(dmg)版本，作兜底
+  // 优先显"实际运行的代码版本"(/api/version：git tag 或热更包 version.json)；热更后壳没换但代码换了，这样才显对
+  fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = j.version || shellVer; }).catch(()=>{ el.textContent = shellVer; });
+  if(window.stewardPty&&window.stewardPty.checkCodeUpdate){ el.style.cursor='pointer'; el.title='点击检查代码更新（只更新代码，免重下整包）'; el.onclick=doCodeUpdate; }
 }
 showAppVersion();
 // 代码热更新(#32·桌面端)：点版本号检查 → 下载校验 → 重启生效
