@@ -166,7 +166,8 @@ setInterval(() => {
     const screen = serialize(r.term); const s = sig(screen);
     // 忙判定:claude 工作时底部恒显「esc to interrupt」→ 直接认它;再叠"屏幕有变化";都没有则连续 2 次(~2.4s)才转空闲(迟滞防抖)
     const changed = r.lastSig !== undefined && s !== r.lastSig;
-    const working = /esc to interrupt/i.test(screen);
+    // 工作信号:claude 干活时底部有「esc to interrupt」或 token 计数器「↑ 684 tokens」——比单纯比对屏幕更稳(消除闪 + 干完才转闲，待确认才轮得上)
+    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?/i.test(screen);
     if (working || changed) { r.idleTicks = 0; r.busy = true; }
     else if (r.lastSig !== undefined) { r.idleTicks = (r.idleTicks || 0) + 1; if (r.idleTicks >= 2) { if (r.busy) r.done = true; r.busy = false; } }
     r.lastSig = s;

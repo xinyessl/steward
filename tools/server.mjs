@@ -209,11 +209,11 @@ async function pollOne(w) {
   const out = await capturePane(w.tmuxSess);
   if (!out) return;                            // 本轮抓不到，保留旧状态
   const sig = sigFromPane(out);
-  if (w.lastSig !== undefined) {
-    const busy = sig !== w.lastSig;
-    if (w.busy && !busy) { w.done = true; w.doneAt = Date.now(); }   // 忙→闲：完成
-    w.busy = busy;
-  } else { w.busy = false; }                   // 首轮：未知按闲（done 仅在真·忙→闲时触发，不会误报）
+  // 工作信号:claude 干活时底部有「esc to interrupt」或 token 计数器「↑ 684 tokens」+ 屏幕变化;连续 2 次都无才转闲(迟滞防抖)
+  const changed = w.lastSig !== undefined && sig !== w.lastSig;
+  const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?/i.test(out);
+  if (working || changed) { w.idleTicks = 0; w.busy = true; }
+  else if (w.lastSig !== undefined) { w.idleTicks = (w.idleTicks || 0) + 1; if (w.idleTicks >= 2) { if (w.busy) { w.done = true; w.doneAt = Date.now(); } w.busy = false; } }
   w.lastSig = sig;
   w.activity = activityFromPane(out);
   w.confirm = !w.busy && confirmFromPane(out);   // 空闲且在等确认/选择 → 红；否则空闲 → 黄
