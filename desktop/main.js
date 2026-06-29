@@ -147,7 +147,11 @@ setInterval(() => {
   for (const [key, r] of ptys) {
     if (!r.term) continue;
     const screen = serialize(r.term); const s = sig(screen);
-    if (r.lastSig !== undefined) { const busy = s !== r.lastSig; if (r.busy && !busy) r.done = true; r.busy = busy; }
+    // 忙判定:claude 工作时底部恒显「esc to interrupt」→ 直接认它;再叠"屏幕有变化";都没有则连续 2 次(~2.4s)才转空闲(迟滞防抖)
+    const changed = r.lastSig !== undefined && s !== r.lastSig;
+    const working = /esc to interrupt/i.test(screen);
+    if (working || changed) { r.idleTicks = 0; r.busy = true; }
+    else if (r.lastSig !== undefined) { r.idleTicks = (r.idleTicks || 0) + 1; if (r.idleTicks >= 2) { if (r.busy) r.done = true; r.busy = false; } }
     r.lastSig = s;
     const wasConfirm = r.confirm;
     r.confirm = !r.busy && isConfirm(screen);
