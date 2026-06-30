@@ -19,7 +19,9 @@ function resolveRoot() {
   try {
     if (app.isPackaged && fs.existsSync(path.join(CODE_DIR, 'tools', 'server.mjs')) && fs.existsSync(path.join(CODE_DIR, 'dashboard', 'index.html'))) {
       let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(CODE_DIR, 'version.json'), 'utf8')); } catch {}
-      if (!meta.requiresShell || cmpVer(app.getVersion(), meta.requiresShell) >= 0) return CODE_DIR;   // 壳够新才用热更代码
+      const shellOk = !meta.requiresShell || cmpVer(app.getVersion(), meta.requiresShell) >= 0;
+      // 关键:热更代码必须严格新于当前壳(=dmg)版本才用它，否则用内置 → 装了新 dmg 一定生效，旧热更代码不再压过新包
+      if (meta.version && shellOk && cmpVer(meta.version, 'v' + app.getVersion()) > 0) return CODE_DIR;
     }
   } catch {}
   return BUILTIN_ROOT;
@@ -160,6 +162,19 @@ function notifyConfirm(r, key) {
     n.show();
   } catch {}
 }
+function notifyDone(r, key) {   // 某窗口干完(忙→闲) → 弹通知。仅当 app 不在前台(你不在看)才弹，避免打扰
+  try {
+    if (!Notification.isSupported()) return;
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isFocused() && !mainWin.isMinimized()) return;
+    if (r.lastDoneNotify && Date.now() - r.lastDoneNotify < 20000) return;
+    r.lastDoneNotify = Date.now();
+    const proj = r.projectId ? '【' + r.projectId + '】' : '';
+    const topic = (r.title || '').trim();
+    const n = new Notification({ title: 'Steward · 干完了 ' + proj, body: topic ? (topic + ' —— 这个窗口的活干完了') : 'claude 这个窗口的活干完了，点开看' });
+    n.on('click', () => { if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus(); } });
+    n.show();
+  } catch {}
+}
 setInterval(() => {
   const now = Date.now();
   for (const [key, r] of ptys) {
@@ -178,7 +193,7 @@ setInterval(() => {
     // 忙 = 非待确认 且 (工作文案 / 6秒内 sig 有变化)。sig 已剥掉 5h 状态栏·盲文·⏵⏵ 等"空闲时仍周期重绘"的行，
     // 所以空闲时 sig 稳定→不闪。绝不能用 lastDataAt(原始数据):空闲状态栏重绘也吐数据，会被误判成在干活→闪(诊断已确认)
     r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
-    if (wasBusy && !r.busy && !r.confirm) r.done = true;
+    if (wasBusy && !r.busy && !r.confirm) { r.done = true; r.doneAt = now; notifyDone(r, key); }   // 干完:记时刻(项目栏"刚完成"角标) + 后台时弹通知(B)
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
 }, 1200);
@@ -217,7 +232,7 @@ ipcMain.handle('code-update-apply', async () => {
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 });
 ipcMain.handle('app-relaunch', () => { app.relaunch(); app.exit(0); });
-ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, title: r.title || '', activity: r.activity || '' })));
+ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, done: !!r.done, doneAt: r.doneAt || 0, title: r.title || '', activity: r.activity || '' })));
 
 // ---------- 3) 窗口 + 注入 native-term ----------
 function createWindow() {

@@ -36,6 +36,7 @@ body{font-family:var(--fn);background:var(--c-bg);color:var(--c-t);font-size:14p
 .projchip.dragging{opacity:.45}
 .pj-badge{background:var(--c-dg);color:#fff;border-radius:8px;font-size:10px;font-weight:700;min-width:15px;height:15px;display:inline-grid;place-items:center;padding:0 4px;font-family:var(--fe);line-height:1}
 .pj-dot{width:7px;height:7px;border-radius:50%;background:var(--c-dg);display:inline-block;flex-shrink:0;margin-left:1px}
+.pj-dot.attn{background:var(--c-dg)}.pj-dot.busy{background:var(--c-ok);animation:pulse 1.2s infinite}.pj-dot.done{background:#3b82f6}
 .projtgl{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer;flex-shrink:0}.projtgl:hover{background:rgba(255,255,255,.2)}
 .tb .rf{background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px;display:flex;gap:5px;align-items:center;white-space:nowrap;flex-shrink:0}.tb .rf:hover{background:rgba(255,255,255,.18)}
 .wrap{flex:1;display:grid;grid-template-columns:1fr 6px var(--rw,480px);min-height:0}
@@ -109,6 +110,7 @@ body.resizing #term-host iframe{pointer-events:none}
 .ttab .tl.editing{overflow:visible;background:var(--c-card);color:var(--c-t);outline:2px solid var(--c-pri);border-radius:4px;padding:0 4px;cursor:text;min-width:40px}
 .ttab.on{background:#111;color:#fff;border-color:#111}
 .ttab .x{display:grid;place-items:center;opacity:.55;font-size:13px}.ttab .x:hover{opacity:1}
+.ttab .rn{display:grid;place-items:center;opacity:.5;font-size:12px}.ttab .rn:hover{opacity:1}
 /* tab 三色状态点：绿=正在干活，红=干完待确认，灰=空闲 */
 .ttab.attn{border-color:var(--c-dg)}.ttab.attn .tl{color:var(--c-dg);font-weight:600}.ttab.on.attn .tl{color:#F2A39B}
 .ttab .tbadge{background:var(--c-dg);color:#fff;border-radius:6px;font-size:10px;font-weight:700;padding:1px 5px;flex-shrink:0;line-height:1.5;white-space:nowrap}
@@ -374,12 +376,12 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
     <div class="team" id="team"></div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
-      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<span style="margin-left:auto;display:flex;gap:6px"><button class="mini-btn2" onclick="togglePreview()" title="实时预览：左侧嵌入本项目运行中的页面（dev server），右侧对话开发、左侧看效果"><i class="ti ti-browser"></i> 预览</button><button class="mini-btn2" onclick="openSpecRef()" title="系统说明书：这个系统有哪些功能模块、各自的规约/验收标准（spec），给 AI 和人快速了解全貌"><i class="ti ti-book-2"></i> 系统说明书</button></span></div>
+      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<span style="margin-left:auto;display:flex;gap:6px"><button class="mini-btn2" onclick="togglePreview()" title="实时预览：左侧嵌入本项目运行中的页面（dev server），右侧对话开发、左侧看效果"><i class="ti ti-brand-chrome"></i> 预览</button><button class="mini-btn2" onclick="openSpecRef()" title="系统说明书：这个系统有哪些功能模块、各自的规约/验收标准（spec），给 AI 和人快速了解全貌"><i class="ti ti-book-2"></i> 系统说明书</button></span></div>
       <div class="fbar" id="task-filter"></div>
       <div id="tasklist"></div>
     </div>
     <div id="v-preview">
-      <div class="sec"><i class="ti ti-browser"></i> 实时预览
+      <div class="sec"><i class="ti ti-brand-chrome"></i> 实时预览
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
           <input id="preview-url" placeholder="http://localhost:5173" onkeydown="if(event.key==='Enter')applyPreviewUrl()" style="width:200px;padding:4px 8px;font-size:12px">
           <button class="mini-btn2" onclick="applyPreviewUrl()" title="打开/刷新"><i class="ti ti-refresh"></i></button>
@@ -947,13 +949,13 @@ function renderTabs(){
     const lab = w.userLabel || ((st.title&&st.title.trim()) ? st.title : w.label);   // 用户命名 > 会话话题 > 默认名
     const act = (st.activity&&st.activity.trim())? st.activity : '';
     const attn = s==='attn';   // ③ 待确认：仅当 claude 真的停下在等你确认/选择（confirm 检测），空闲不显示
-    const tip=('话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')+'\n(双击标题可重命名)').replace(/"/g,'');
-    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${esc(tip)}"><span class="tdot ${s}"></span><span class="tl" ondblclick="renameTab(event,${i})">${esc(lab)}</span>${attn?'<span class="tbadge">待确认</span>':''}<span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
+    const tip=('话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')+'\n(点 ✎ 或双击标题可重命名)').replace(/"/g,'');
+    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${esc(tip)}"><span class="tdot ${s}"></span><span class="tl" ondblclick="renameTab(event,${i})">${esc(lab)}</span>${attn?'<span class="tbadge">待确认</span>':''}<span class="rn" onclick="renameTabBtn(event,${i})" title="重命名此窗口"><i class="ti ti-pencil"></i></span><span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
   }).join('');
   renderTeam();   // 开发状态与窗口标签同源，随之刷新
 }
-function renameTab(ev,i){
-  ev.stopPropagation(); const el=ev.currentTarget, w=windows[i]; if(!w)return;
+function startRename(el,i){   // 把 tab 标题变成可编辑
+  const w=windows[i]; if(!w||!el)return;
   _editingTab=true; el.contentEditable='true'; el.classList.add('editing'); el.focus();
   try{ const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}
   let done=false;
@@ -964,11 +966,14 @@ function renameTab(ev,i){
   el.onblur=()=>finish(true);
   el.onkeydown=(e)=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); el.blur(); } else if(e.key==='Escape'){ e.preventDefault(); el.onblur=null; finish(false); } };
 }
+function renameTab(ev,i){ ev.stopPropagation(); startRename(ev.currentTarget,i); }   // 双击标题
+function renameTabBtn(ev,i){ ev.stopPropagation(); const tab=ev.currentTarget.closest('.ttab'); startRename(tab&&tab.querySelector('.tl'),i); }   // ✎ 按钮(客户端可靠，不受双击竞态影响)
 async function pollWinStates(){
   // 全局 CLI 提示：哪些项目有窗口在等你确认 → 浏览器标题前缀 (N) + 项目角标（每 2.5s 刷新，跨项目）
   try{
     const a=await (await fetch('/api/attn?t='+Date.now())).json();
-    attnByProject=a.byProject||{};
+    attnByProject=a.byProject||{}; busyByProject=a.busyByProject||{};
+    const dp=a.doneByProject||{}; if(PROJECT) delete dp[PROJECT]; doneByProject=dp;   // 当前项目不显"刚完成"(你正看着)
     document.title=(a.total?`(${a.total}) `:'')+'Steward 控制台';
     applyProjBadges();
   }catch(e){}
@@ -1140,18 +1145,24 @@ function applyFocus(){
   setTimeout(()=>window.dispatchEvent(new Event('resize')),80);   // 触发终端(xterm/ttyd)按新宽度重排
 }
 function toggleFocus(){ focusMode=!focusMode; try{localStorage.setItem('focusMode',focusMode?'1':'0');}catch{} applyFocus(); }
-let attnByProject={};   // {项目id: 有几个 CLI 窗口在等你确认}——驱动顶部项目角标（不是 spec 待处理数）
+let attnByProject={}, busyByProject={}, doneByProject={};   // {项目id:数量} 待确认/干活中/刚完成——驱动顶部项目多状态角标
+function projDot(pid){   // 优先级:待确认(红) > 干活中(绿·呼吸) > 刚完成(蓝)
+  if(attnByProject[pid]) return {cls:'attn',tip:'有窗口在等你确认'};
+  if(busyByProject[pid]) return {cls:'busy',tip:'有窗口在干活'};
+  if(doneByProject[pid]) return {cls:'done',tip:'有窗口刚完成'};
+  return null;
+}
 function renderProjSpread(){
   const sp=document.getElementById('proj-spread'); if(!sp)return;
-  sp.innerHTML=PROJECTS.map(p=>{ const n=attnByProject[p.id]||0; return `<span class="projchip ${p.id===PROJECT?'on':''}" draggable="true" ondragstart="projDragStart(event,'${jss(p.id)}')" ondragover="projDragOver(event)" ondragleave="projDragLeave(event)" ondrop="projDrop(event,'${jss(p.id)}')" ondragend="projDragEnd(event)" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}${n?` · 有窗口在等你确认`:''}（可拖拽排序；删除用右侧 🗑️）">${esc(p.name)}${n?`<span class="pj-dot" title="有窗口在等你确认"></span>`:''}</span>`; }).join('');
+  sp.innerHTML=PROJECTS.map(p=>{ const d=projDot(p.id); return `<span class="projchip ${p.id===PROJECT?'on':''}" draggable="true" ondragstart="projDragStart(event,'${jss(p.id)}')" ondragover="projDragOver(event)" ondragleave="projDragLeave(event)" ondrop="projDrop(event,'${jss(p.id)}')" ondragend="projDragEnd(event)" onclick="selectProject('${jss(p.id)}')" title="${esc(p.name)}${d?` · ${d.tip}`:''}（可拖拽排序；删除用右侧 🗑️）">${esc(p.name)}${d?`<span class="pj-dot ${d.cls}" title="${d.tip}"></span>`:''}</span>`; }).join('');
 }
 let _badgeSig='';
-function applyProjBadges(){   // 仅当"等确认"分布变化时才重渲，避免每次轮询闪烁
-  const sig=JSON.stringify(attnByProject)+'|'+PROJECT+'|'+PROJECTS.map(p=>p.id+':'+p.name).join(',');
+function applyProjBadges(){   // 仅当状态分布变化时才重渲，避免每次轮询闪烁
+  const sig=JSON.stringify(attnByProject)+'|'+JSON.stringify(busyByProject)+'|'+JSON.stringify(doneByProject)+'|'+PROJECT+'|'+PROJECTS.map(p=>p.id+':'+p.name).join(',');
   if(sig===_badgeSig)return; _badgeSig=sig;
   renderProjSpread();
   const sel=document.getElementById('proj');
-  if(sel) [...sel.options].forEach(o=>{ const p=PROJECTS.find(x=>x.id===o.value); if(!p)return; const n=attnByProject[o.value]||0; o.textContent=p.name+(n?' ●':''); });
+  if(sel) [...sel.options].forEach(o=>{ const p=PROJECTS.find(x=>x.id===o.value); if(!p)return; const d=projDot(o.value); o.textContent=p.name+(d?(d.cls==='attn'?' ●':d.cls==='busy'?' ◌':' ✓'):''); });
 }
 // 项目 chips 拖拽排序（顺序持久化到 projects.json）
 let draggedProj=null;

@@ -666,10 +666,14 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
   if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
-  if (url.pathname === '/api/attn') {   // 跨项目：哪些项目有 CLI 窗口在等你确认（claude 停下等 y/n/选择）→ 驱动项目角标 + 浏览器标题
-    const byProject = {}; let total = 0;
-    for (const w of openWindows.values()) if (w.confirm) { byProject[w.projectId] = (byProject[w.projectId] || 0) + 1; total++; }
-    return send(res, 200, JSON.stringify({ byProject, total }));
+  if (url.pathname === '/api/attn') {   // 跨项目状态：待确认/干活中/刚完成 → 驱动项目多状态角标 + 浏览器标题
+    const byProject = {}, busyByProject = {}, doneByProject = {}; let total = 0; const now = Date.now();
+    for (const w of openWindows.values()) {
+      if (w.confirm) { byProject[w.projectId] = (byProject[w.projectId] || 0) + 1; total++; }
+      else if (w.busy) busyByProject[w.projectId] = (busyByProject[w.projectId] || 0) + 1;
+      if (w.done && w.doneAt && now - w.doneAt < 120000) doneByProject[w.projectId] = (doneByProject[w.projectId] || 0) + 1;
+    }
+    return send(res, 200, JSON.stringify({ byProject, busyByProject, doneByProject, total }));
   }
   if (url.pathname === '/api/window-seen' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let k = ''; try { k = String(JSON.parse(buf).key || ''); } catch {} const w = openWindows.get(k); if (w) w.done = false; send(res, 200, JSON.stringify({ ok: true })); }); return; }
   if (url.pathname === '/api/window-capture') {   // 抓某窗口屏幕文本，供「复制」按钮在父页面写剪贴板(绕开 iframe/OSC52)；full=1 抓全部滚动历史

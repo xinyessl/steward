@@ -134,13 +134,15 @@
   // 这里给 dashboard 暴露一个开关函数；并自起一个 native 轮询。
   async function nativePoll() {
     try {
-      const arr = await window.stewardPty.states(); const map = {}, attn = {};
+      const arr = await window.stewardPty.states(); const map = {}, attn = {}, busyP = {}, doneP = {}; const NOW = Date.now();
       arr.forEach(s => {
-        map[s.key] = { busy: s.busy, confirm: s.confirm, title: s.title, activity: s.activity };
-        if (s.confirm) attn[s.projectId] = (attn[s.projectId] || 0) + 1;   // 各项目"等确认"窗口数 → 项目角标
+        map[s.key] = { busy: s.busy, confirm: s.confirm, done: s.done, title: s.title, activity: s.activity };
+        if (s.confirm) attn[s.projectId] = (attn[s.projectId] || 0) + 1;                                 // 待确认
+        else if (s.busy) busyP[s.projectId] = (busyP[s.projectId] || 0) + 1;                             // 干活中
+        if (s.done && s.doneAt && NOW - s.doneAt < 120000 && s.projectId !== PROJECT) doneP[s.projectId] = (doneP[s.projectId] || 0) + 1;   // 刚完成(120s 内·非当前项目)
       });
       winState = map; winInit = true;
-      attnByProject = attn; applyProjBadges();                              // 恢复项目名后的数字标识(native 数据驱动)
+      attnByProject = attn; busyByProject = busyP; doneByProject = doneP; applyProjBadges();             // 项目栏多状态角标(native 数据驱动)
       const total = Object.values(attn).reduce((a, b) => a + b, 0);
       document.title = (total ? `(${total}) ` : '') + 'Steward 控制台';      // 浏览器/窗口标题也带 (N)
       renderTabs();
