@@ -182,10 +182,11 @@ setInterval(() => {
     const screen = serialize(r.term); const s = sig(screen);
     if (r.lastSig !== undefined && s !== r.lastSig) r.lastChange = now;   // 记录"最近一次屏幕变化"时刻
     r.lastSig = s;
-    // 工作信号:正在生成「esc to interrupt」/ token 计数「↑↓ N tokens」/ 后台子代理「background agents · Waiting for」。
-    // 用 s(=sig，已剥掉 5h/上下文 状态栏)的尾部，避免状态栏里的 % / tokens 字样误判成在干活
+    // 工作信号:正在生成「esc to interrupt」/ token 计数「↑↓ N tokens」/ 实时等子代理「Waiting for N background」。
+    // 用 s(=sig，已剥掉 5h/上下文 状态栏)的尾部。注意:不能用宽泛的 background agents/Waiting for——
+    // claude 会把"上次进程残留的 Background agent ... was running ... did not complete"这类陈述句打印出来，会被误判成在干活→卡 busy(诊断已确认)
     const tail = s.split('\n').slice(-12).join('\n');
-    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|background agents?|Waiting for/i.test(tail);
+    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background/i.test(tail);
     // 待确认独立判定：菜单(❯ N.)/y-n 一出现立刻红，不再被 busy 卡住
     const wasConfirm = r.confirm;
     r.confirm = isConfirm(screen);

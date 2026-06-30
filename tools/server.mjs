@@ -212,9 +212,10 @@ async function pollOne(w) {
   const now = Date.now();
   if (w.lastSig !== undefined && sig !== w.lastSig) w.lastChange = now;   // 记录最近一次屏幕变化
   w.lastSig = sig;
-  // 工作信号(底部状态区):生成中「esc to interrupt」/ token 计数「↑↓ N tokens」/ 后台子代理「background agents · Waiting for」
-  const tail = out.split('\n').slice(-12).join('\n');
-  const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|background agents?|Waiting for/i.test(tail);
+  // 工作信号:生成中「esc to interrupt」/ token 计数「↑↓ N tokens」/ 实时等子代理「Waiting for N background」。
+  // 不用宽泛 background agents/Waiting for——会误命中"上次残留 Background agent ... did not complete"陈述句→卡 busy
+  const tail = sigFromPane(out).split('\n').slice(-12).join('\n');
+  const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background/i.test(tail);
   w.activity = activityFromPane(out);
   w.confirm = confirmFromPane(out);   // 待确认独立判定:菜单/y-n 一出现即红，不被 busy 卡住
   // 忙 = 非待确认 且 (有工作文案 或 10 秒内有过变化)。时间窗迟滞 → 后台代理间歇重绘也不闪
