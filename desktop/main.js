@@ -167,16 +167,17 @@ setInterval(() => {
     const screen = serialize(r.term); const s = sig(screen);
     if (r.lastSig !== undefined && s !== r.lastSig) r.lastChange = now;   // 记录"最近一次屏幕变化"时刻
     r.lastSig = s;
-    // 工作信号(底部状态区):正在生成「esc to interrupt」/ token 计数「↑↓ N tokens」/ 后台子代理「background agents · Waiting for」
-    const tail = screen.split('\n').slice(-12).join('\n');
+    // 工作信号:正在生成「esc to interrupt」/ token 计数「↑↓ N tokens」/ 后台子代理「background agents · Waiting for」。
+    // 用 s(=sig，已剥掉 5h/上下文 状态栏)的尾部，避免状态栏里的 % / tokens 字样误判成在干活
+    const tail = s.split('\n').slice(-12).join('\n');
     const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|background agents?|Waiting for/i.test(tail);
     // 待确认独立判定：菜单(❯ N.)/y-n 一出现立刻红，不再被 busy 卡住
     const wasConfirm = r.confirm;
     r.confirm = isConfirm(screen);
-    // 忙 = (非待确认) 且 (有工作文案 或 10 秒内有过屏幕变化)。时间窗迟滞 → 后台代理间歇重绘也不闪
     const wasBusy = r.busy;
-    // 忙 = 非待确认 且 (工作文案 / 8秒内有原始数据输出 / 12秒内屏幕有变化)。lastDataAt 直接看 pty 输出,不依赖屏幕解析 → 最稳
-    r.busy = !r.confirm && (working || (r.lastDataAt && now - r.lastDataAt < 8000) || (r.lastChange && now - r.lastChange < 12000));
+    // 忙 = 非待确认 且 (工作文案 / 6秒内 sig 有变化)。sig 已剥掉 5h 状态栏·盲文·⏵⏵ 等"空闲时仍周期重绘"的行，
+    // 所以空闲时 sig 稳定→不闪。绝不能用 lastDataAt(原始数据):空闲状态栏重绘也吐数据，会被误判成在干活→闪(诊断已确认)
+    r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
     if (wasBusy && !r.busy && !r.confirm) r.done = true;
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
