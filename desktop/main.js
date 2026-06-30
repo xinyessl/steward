@@ -33,6 +33,31 @@ const SERVER = path.join(ROOT, 'tools', 'server.mjs');
 const PORT = process.env.PORT || 5180;   // 桌面端用 5180，避开 web 版的 5178（同时开也不撞）
 let serverProc = null, mainWin = null;
 
+// ===== claude 状态钩子(权威态，替代屏幕猜测) =====
+// 用 claude Code 的 hooks(UserPromptSubmit→忙 / Stop→闲 / Notification→等确认)写状态文件，steward 读它显示状态。
+// 路径放 ~/.steward/cli-state(无空格，跨平台安全)；启动 claude 时 --settings 叠加这套 hooks(不污染用户配置) + 注入 STEWARD_WIN。
+const STATE_DIR = path.join(os.homedir(), '.steward', 'cli-state');
+const HOOK_SCRIPT = path.join(STATE_DIR, 'report-state.cjs');
+const HOOK_SETTINGS = path.join(STATE_DIR, 'hooks.json');
+function writeHookFiles() {
+  try {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    // hook 脚本:按 STEWARD_WIN 把状态写到 <dir>/<key>.json，不依赖 stdin
+    fs.writeFileSync(HOOK_SCRIPT, `const fs=require('fs'),path=require('path');const st=process.argv[2]||'idle';const k=process.env.STEWARD_WIN,d=process.env.STEWARD_STATE_DIR;if(k&&d){try{fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,k+'.json'),JSON.stringify({state:st,ts:Date.now()}))}catch(e){}}\n`);
+    const cmd = s => ({ type: 'command', command: `node "${HOOK_SCRIPT}" ${s}` });
+    const evt = s => [{ matcher: '', hooks: [cmd(s)] }];
+    const settings = { hooks: {
+      SessionStart: evt('idle'),
+      UserPromptSubmit: evt('doing'),
+      Stop: evt('idle'),
+      Notification: [{ matcher: 'permission_prompt', hooks: [cmd('waiting')] }],
+    } };
+    fs.writeFileSync(HOOK_SETTINGS, JSON.stringify(settings));
+  } catch (e) { console.error('[hook] 写钩子文件失败', e && e.message); }
+}
+writeHookFiles();
+function readHookState(key) { try { return JSON.parse(fs.readFileSync(path.join(STATE_DIR, key + '.json'), 'utf8')); } catch { return null; } }
+
 // ---------- 1) 起后端（electron 当 node 跑 server.mjs，所有非终端 API 原样可用） ----------
 function startServer() {
   serverProc = fork(SERVER, [], {
@@ -110,10 +135,11 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   if (ptys.has(key)) return { ok: true };
   if (!allowedCwd(cwd)) return { ok: false, error: 'cwd 不在已纳管项目范围内，已拒绝(安全)' };
   const args = [...EXTRA]; if (sessionId) args.push('--resume', sessionId);
+  if (fs.existsSync(HOOK_SETTINGS)) args.push('--settings', HOOK_SETTINGS);   // 叠加状态钩子(不污染用户配置);文件没写成则不加，绝不因此起不来
   const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
   let proc;
   try {
-    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } };
+    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH, STEWARD_WIN: key, STEWARD_STATE_DIR: STATE_DIR } };
     if (process.platform === 'win32') {
       // claude 是 .cmd shim，ConPTY/CreateProcess 不能直接跑 .cmd → 经 cmd.exe /c 启动(按 PATHEXT 解析 .cmd)
       proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', ['/c', ['claude', ...args].join(' ')], opts);
@@ -129,9 +155,10 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
   ptys.set(key, rec);
+  try { fs.writeFileSync(path.join(STATE_DIR, key + '.json'), JSON.stringify({ state: 'idle', ts: Date.now() })); } catch {}   // 初始置闲，等钩子事件覆盖
   const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
   proc.onData(d => { rec.lastDataAt = Date.now(); if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });   // 原始数据流时刻:claude 一输出就更新,最可靠的"在干活"信号(不依赖屏幕解析)
-  proc.onExit(() => { ptys.delete(key); sendWin('pty-exit', { key }); });
+  proc.onExit(() => { ptys.delete(key); try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} sendWin('pty-exit', { key }); });
   return { ok: true };
 }
 
@@ -180,20 +207,22 @@ setInterval(() => {
   for (const [key, r] of ptys) {
     if (!r.term) continue;
     const screen = serialize(r.term); const s = sig(screen);
-    if (r.lastSig !== undefined && s !== r.lastSig) r.lastChange = now;   // 记录"最近一次屏幕变化"时刻
+    if (r.lastSig !== undefined && s !== r.lastSig) r.lastChange = now;   // 记录"最近一次屏幕变化"时刻(回退用)
     r.lastSig = s;
-    // 工作信号:正在生成「esc to interrupt」/ token 计数「↑↓ N tokens」/ 实时等子代理「Waiting for N background」。
-    // 用 s(=sig，已剥掉 5h/上下文 状态栏)的尾部。注意:不能用宽泛的 background agents/Waiting for——
-    // claude 会把"上次进程残留的 Background agent ... was running ... did not complete"这类陈述句打印出来，会被误判成在干活→卡 busy(诊断已确认)
-    const tail = s.split('\n').slice(-12).join('\n');
-    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background/i.test(tail);
-    // 待确认独立判定：菜单(❯ N.)/y-n 一出现立刻红，不再被 busy 卡住
     const wasConfirm = r.confirm;
-    r.confirm = isConfirm(screen);
     const wasBusy = r.busy;
-    // 忙 = 非待确认 且 (工作文案 / 6秒内 sig 有变化)。sig 已剥掉 5h 状态栏·盲文·⏵⏵ 等"空闲时仍周期重绘"的行，
-    // 所以空闲时 sig 稳定→不闪。绝不能用 lastDataAt(原始数据):空闲状态栏重绘也吐数据，会被误判成在干活→闪(诊断已确认)
-    r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
+    // 待确认 = 屏幕出现菜单(❯ N.)/y-n（稳定，不会闪），或 claude 权限通知钩子(waiting)
+    const hookState = readHookState(key);
+    const tail = s.split('\n').slice(-12).join('\n');
+    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background|[✻✶✳✷✺]/.test(tail);   // 屏幕明显在干活(spinner/esc/tokens)
+    r.confirm = isConfirm(screen) || (hookState && hookState.state === 'waiting');
+    if (hookState && hookState.state) {
+      // 权威态:claude 钩子说了算(UserPromptSubmit→doing / Stop→idle)，事件驱动无时间窗 → 不闪；再 OR 屏幕兜底，防个别钩子没触发
+      r.busy = !r.confirm && (hookState.state === 'doing' || working);
+    } else {
+      // 回退(无钩子数据:老 claude / 刚启动还没事件):屏幕启发式 + 6 秒时间窗
+      r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
+    }
     if (wasBusy && !r.busy && !r.confirm) { r.done = true; r.doneAt = now; notifyDone(r, key); }   // 干完:记时刻(项目栏"刚完成"角标) + 后台时弹通知(B)
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
@@ -204,7 +233,7 @@ ipcMain.handle('pty-write', (e, { key, data }) => { const r = ptys.get(key); if 
 ipcMain.handle('pty-resize', (e, { key, cols, rows }) => { const r = ptys.get(key); if (r) { try { r.proc.resize(cols, rows); } catch {} if (r.term) try { r.term.resize(cols, rows); } catch {} } });
 ipcMain.handle('pty-kill', (e, { key }) => { const r = ptys.get(key); if (r) { try { r.proc.kill(); } catch {} ptys.delete(key); } });
 ipcMain.handle('pty-capture', (e, { key }) => { const r = ptys.get(key); return r ? serialize(r.term) : ''; });
-ipcMain.handle('pty-debug', (e, { key }) => { const r = ptys.get(key); if (!r) return ''; const now = Date.now(); const head = `busy=${r.busy} confirm=${r.confirm} rows=${r.term && r.term.rows} cols=${r.term && r.term.cols} dataAgo=${r.lastDataAt ? (now - r.lastDataAt) + 'ms' : '-'} changeAgo=${r.lastChange ? (now - r.lastChange) + 'ms' : '-'}`; return head + '\n----headless screen----\n' + serialize(r.term); });   // 状态诊断:看主进程实际抓到的屏幕 + 判定
+ipcMain.handle('pty-debug', (e, { key }) => { const r = ptys.get(key); if (!r) return ''; const now = Date.now(); const hs = readHookState(key); const head = `busy=${r.busy} confirm=${r.confirm} hook=${hs ? hs.state + '(' + (now - hs.ts) + 'ms)' : '无'} rows=${r.term && r.term.rows} cols=${r.term && r.term.cols} dataAgo=${r.lastDataAt ? (now - r.lastDataAt) + 'ms' : '-'} changeAgo=${r.lastChange ? (now - r.lastChange) + 'ms' : '-'}`; return head + '\n----headless screen----\n' + serialize(r.term); });   // 状态诊断:看主进程实际抓到的屏幕 + 判定 + 钩子态
 ipcMain.handle('clipboard-write', (e, { text }) => { try { clipboard.writeText(String(text || '')); return true; } catch { return false; } });   // 原生剪贴板：不受 sandbox/CSP/焦点限制(navigator.clipboard 在 sandbox 下会失效)
 ipcMain.handle('clipboard-read', () => { try { return clipboard.readText() || ''; } catch { return ''; } });   // 与 write 对称，供 Ctrl+Shift+V 自处理粘贴
 // 代码热更新(#32)：手动检查/应用；只认官方 Release + SHA256 校验 + 壳兼容门 + 写 userData(不碰只读 .app)
