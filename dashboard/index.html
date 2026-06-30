@@ -48,6 +48,11 @@ body.resizing #term-host iframe{pointer-events:none}
 #v-board{display:flex;flex-direction:column;flex:1;min-height:0}
 #specs{flex:1;min-height:0;overflow:auto}
 #tasklist{flex:1;min-height:0;overflow:auto}
+/* 实时预览视图：默认隐藏；开启时占满左栏、隐藏开发状态+任务区 */
+#v-preview{display:none;flex:1;min-height:0;flex-direction:column}
+.left.preview-on>.sec,.left.preview-on>.team,.left.preview-on>#v-board{display:none}
+.left.preview-on>#v-preview{display:flex}
+#preview-frame{flex:1;min-height:0;width:100%;border:1px solid var(--c-bd);border-radius:8px;background:#fff}
 .wrap.focus{grid-template-columns:1fr}
 .wrap.focus .left,.wrap.focus .splitter{display:none}
 .right{border-left:1px solid var(--c-bd);background:var(--c-card);display:flex;flex-direction:column;min-height:0;position:relative}
@@ -101,6 +106,7 @@ body.resizing #term-host iframe{pointer-events:none}
 .term-tabs{display:flex;gap:4px;padding:8px 10px 0;background:var(--c-card);flex-wrap:wrap;flex-shrink:0}
 .ttab{display:flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid var(--c-bd);border-bottom:none;border-radius:8px 8px 0 0;font-size:12px;cursor:pointer;background:var(--c-bg);color:var(--c-t2);max-width:170px}
 .ttab .tl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttab .tl.editing{overflow:visible;background:var(--c-card);color:var(--c-t);outline:2px solid var(--c-pri);border-radius:4px;padding:0 4px;cursor:text;min-width:40px}
 .ttab.on{background:#111;color:#fff;border-color:#111}
 .ttab .x{display:grid;place-items:center;opacity:.55;font-size:13px}.ttab .x:hover{opacity:1}
 /* tab 三色状态点：绿=正在干活，红=干完待确认，灰=空闲 */
@@ -235,7 +241,7 @@ body.resizing #term-host iframe{pointer-events:none}
 /* 抽屉(系统参考)：右侧滑出，常驻；spec 详情弹窗(z-index 100)叠在其上 */
 .drawer-mask{position:fixed;inset:0;background:rgba(15,39,68,.28);z-index:89;display:none}
 .drawer-mask.on{display:block}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,94vw);background:var(--c-card);box-shadow:-10px 0 36px rgba(15,39,68,.2);z-index:90;transform:translateX(102%);transition:transform .22s ease;display:flex;flex-direction:column}
+.drawer{position:fixed;top:0;left:0;bottom:0;width:min(640px,94vw);background:var(--c-card);box-shadow:10px 0 36px rgba(15,39,68,.2);z-index:90;transform:translateX(-102%);transition:transform .22s ease;display:flex;flex-direction:column}
 .drawer.on{transform:translateX(0)}
 .drawer-body{flex:1;min-height:0;overflow:auto;padding:14px 18px;display:flex;flex-direction:column}
 .spec-search-wrap{display:flex;align-items:center;gap:7px;border:1px solid var(--c-bd);border-radius:9px;padding:7px 11px;margin-bottom:10px;color:var(--c-t3)}
@@ -368,9 +374,20 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
     <div class="team" id="team"></div>
     <div id="v-board">
       <div id="empty-cta" class="empty-cta" style="display:none"></div>
-      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<button class="mini-btn2" style="margin-left:auto" onclick="openSpecRef()" title="系统说明书：这个系统有哪些功能模块、各自的规约/验收标准（spec），给 AI 和人快速了解全貌"><i class="ti ti-book-2"></i> 系统说明书</button></div>
+      <div class="sec"><i class="ti ti-list-check"></i> 任务清单（我的任务做到哪了）<span style="margin-left:auto;display:flex;gap:6px"><button class="mini-btn2" onclick="togglePreview()" title="实时预览：左侧嵌入本项目运行中的页面（dev server），右侧对话开发、左侧看效果"><i class="ti ti-browser"></i> 预览</button><button class="mini-btn2" onclick="openSpecRef()" title="系统说明书：这个系统有哪些功能模块、各自的规约/验收标准（spec），给 AI 和人快速了解全貌"><i class="ti ti-book-2"></i> 系统说明书</button></span></div>
       <div class="fbar" id="task-filter"></div>
       <div id="tasklist"></div>
+    </div>
+    <div id="v-preview">
+      <div class="sec"><i class="ti ti-browser"></i> 实时预览
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <input id="preview-url" placeholder="http://localhost:5173" onkeydown="if(event.key==='Enter')applyPreviewUrl()" style="width:200px;padding:4px 8px;font-size:12px">
+          <button class="mini-btn2" onclick="applyPreviewUrl()" title="打开/刷新"><i class="ti ti-refresh"></i></button>
+          <button class="mini-btn2" onclick="togglePreview()" title="返回任务清单"><i class="ti ti-arrow-back-up"></i> 任务</button>
+        </span>
+      </div>
+      <div id="preview-hint" class="empty-cta" style="display:none">填本项目 dev server 地址（如 http://localhost:5173）→ 回车，左侧实时渲染运行效果。地址按项目记住。</div>
+      <iframe id="preview-frame" title="预览"></iframe>
     </div>
   </div>
 
@@ -384,6 +401,7 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
       <span class="rl" id="t-new" onclick="newWindow()"><i class="ti ti-plus"></i> 新窗口</span>
       <span class="rl" id="t-hist" onclick="toggleHistory()"><i class="ti ti-history"></i> 历史对话</span>
       <span class="rl" id="t-copy" onclick="copyTermScreen(event)" title="复制当前终端屏幕文本到剪贴板（Shift+点=连滚动历史一起复制）"><i class="ti ti-copy"></i> 复制</span>
+      <span class="rl" id="t-diag" onclick="doDiag()" title="状态诊断:把当前窗口抓到的屏幕+忙/闲判定复制到剪贴板，发给开发定位闪烁"><i class="ti ti-stethoscope"></i> 诊断</span>
     </div>
     <div class="hist-pop" id="cmd-pop"></div>
     <div id="mode-term" style="display:flex;flex-direction:column;flex:1;min-height:0">
@@ -759,6 +777,16 @@ async function copyTermScreen(ev){   // 抓当前终端屏幕文本→复制(绕
     toast(ok?('已复制 '+text.split('\n').length+' 行到剪贴板'+(full?'（含历史）':'')):'复制失败：浏览器拒绝了剪贴板');
   }catch(e){ toast('复制失败：'+(e.message||e)); }
 }
+async function doDiag(){   // 状态诊断:抓当前窗口"主进程实际看到的屏幕 + 忙/闲判定"，复制给开发定位闪烁
+  const w=windows[activeIdx]||windows[0]; if(!w){ toast('没有终端窗口'); return; }
+  let txt='';
+  try{
+    if(window.stewardPty&&window.stewardPty.debug){ txt=await window.stewardPty.debug(w.key); }
+    else { const r=await (await fetch('/api/window-capture?key='+encodeURIComponent(w.key))).json(); txt='[web]\n'+(r.text||''); }
+  }catch(e){ txt='诊断失败:'+(e.message||e); }
+  const ok=await copyText(txt);
+  toast(ok?'诊断信息已复制 → 粘给开发':'复制失败');
+}
 // —— 多选操作（模块栏「合并/删除」对勾选的 spec 生效）——
 let selSpecs=new Set(), mergeIds=[];
 function modKey(sp){ return (sp.module&&sp.module.trim())||'（未标模块）'; }
@@ -911,16 +939,30 @@ function activate(idx){
 // 三态：绿=干活(busy)，红=需确认/出错(confirm)，黄=空闲待派活(其余)
 function winS(st){ return st.busy ? 'working' : (st.confirm ? 'attn' : 'idle'); }
 function winStateLabel(s){ return s==='working'?'正在干活':(s==='attn'?'需确认 / 出错':'空闲 · 待派活'); }
+let _editingTab=false;   // 正在改 tab 名时，暂停轮询重渲染，避免冲掉编辑
 function renderTabs(){
+  if(_editingTab) return;
   document.getElementById('term-tabs').innerHTML=windows.map((w,i)=>{
     const st=winState[w.key]||{}, s=winS(st), stt=winStateLabel(s);
-    const lab = (st.title&&st.title.trim()) ? st.title : w.label;   // 用会话话题做标签，便于区分
+    const lab = w.userLabel || ((st.title&&st.title.trim()) ? st.title : w.label);   // 用户命名 > 会话话题 > 默认名
     const act = (st.activity&&st.activity.trim())? st.activity : '';
     const attn = s==='attn';   // ③ 待确认：仅当 claude 真的停下在等你确认/选择（confirm 检测），空闲不显示
-    const tip=('话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')).replace(/"/g,'');
-    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${esc(tip)}"><span class="tdot ${s}"></span><span class="tl">${esc(lab)}</span>${attn?'<span class="tbadge">待确认</span>':''}<span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
+    const tip=('话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')+'\n(双击标题可重命名)').replace(/"/g,'');
+    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${esc(tip)}"><span class="tdot ${s}"></span><span class="tl" ondblclick="renameTab(event,${i})">${esc(lab)}</span>${attn?'<span class="tbadge">待确认</span>':''}<span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
   }).join('');
   renderTeam();   // 开发状态与窗口标签同源，随之刷新
+}
+function renameTab(ev,i){
+  ev.stopPropagation(); const el=ev.currentTarget, w=windows[i]; if(!w)return;
+  _editingTab=true; el.contentEditable='true'; el.classList.add('editing'); el.focus();
+  try{ const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}
+  let done=false;
+  const finish=(save)=>{ if(done)return; done=true; _editingTab=false; el.contentEditable='false'; el.classList.remove('editing');
+    if(save){ const nv=(el.textContent||'').replace(/\s+/g,' ').trim(); w.userLabel = nv || undefined; }
+    renderTabs();
+  };
+  el.onblur=()=>finish(true);
+  el.onkeydown=(e)=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); el.blur(); } else if(e.key==='Escape'){ e.preventDefault(); el.onblur=null; finish(false); } };
 }
 async function pollWinStates(){
   // 全局 CLI 提示：哪些项目有窗口在等你确认 → 浏览器标题前缀 (N) + 项目角标（每 2.5s 刷新，跨项目）
@@ -990,6 +1032,22 @@ function delSession(id){
 }
 
 function refreshAll(){ if(!PROJECT)return; loadBoard();renderTeam();loadBatches(); }
+// —— 实时预览（左侧嵌入本项目运行中的页面）——
+function previewKey(){ return 'preview-url:'+(PROJECT||''); }
+function togglePreview(){
+  const left=document.querySelector('.left'); if(!left)return;
+  const on=left.classList.toggle('preview-on');
+  if(on){ const inp=document.getElementById('preview-url'); inp.value=localStorage.getItem(previewKey())||''; applyPreviewUrl(); inp.focus(); }
+}
+function applyPreviewUrl(){
+  const inp=document.getElementById('preview-url'); let u=(inp.value||'').trim();
+  const fr=document.getElementById('preview-frame'), hint=document.getElementById('preview-hint');
+  if(!u){ fr.src='about:blank'; fr.style.display='none'; hint.style.display=''; localStorage.removeItem(previewKey()); return; }
+  if(!/^https?:\/\//i.test(u)) u='http://'+u; inp.value=u;
+  localStorage.setItem(previewKey(),u);
+  hint.style.display='none'; fr.style.display='';
+  fr.src='about:blank'; setTimeout(()=>{ fr.src=u; },30);   // 重置再赋值 = 强制刷新
+}
 // 「开发状态」按右侧窗口渲染：一个窗口=一个开发，绿干活/红待确认/灰空闲，点击切到该窗口
 function renderTeam(){
   const el=document.getElementById('team'); if(!el)return;
@@ -1111,7 +1169,9 @@ function projDrop(e,id){
   applyProjBadges();
   fetch('/api/project-reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:PROJECTS.map(p=>p.id)})}).catch(()=>{});
 }
-function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal(); }
+function selectProject(id){ if(!id||id===PROJECT){ /*同项目也允许重新进*/ } PROJECT=id; const sel=document.getElementById('proj'); if(sel) sel.value=id; renderProjSpread(); refreshAll(); loadTerminal();
+  if(document.querySelector('.left.preview-on')){ const inp=document.getElementById('preview-url'); if(inp){ inp.value=localStorage.getItem(previewKey())||''; applyPreviewUrl(); } }   // 切项目→换该项目的预览地址
+}
 function onProj(){ selectProject(document.getElementById('proj').value); }
 function delCurrentProject(){ if(!PROJECT){ toast('当前没有项目'); return; } removeProject(PROJECT); }
 async function syncMethodology(){

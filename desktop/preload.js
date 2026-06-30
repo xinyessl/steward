@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('stewardPty', {
   kill: (key) => ipcRenderer.invoke('pty-kill', { key }),
   setActive: (key) => ipcRenderer.invoke('pty-set-active', { key }),
   capture: (key) => ipcRenderer.invoke('pty-capture', { key }),
+  debug: (key) => ipcRenderer.invoke('pty-debug', { key }),
   clipboardWrite: (text) => ipcRenderer.invoke('clipboard-write', { text }),
   clipboardRead: () => ipcRenderer.invoke('clipboard-read'),
   checkCodeUpdate: () => ipcRenderer.invoke('code-update-check'),

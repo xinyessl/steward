@@ -128,7 +128,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
   ptys.set(key, rec);
   const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
-  proc.onData(d => { if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });
+  proc.onData(d => { rec.lastDataAt = Date.now(); if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });   // 原始数据流时刻:claude 一输出就更新,最可靠的"在干活"信号(不依赖屏幕解析)
   proc.onExit(() => { ptys.delete(key); sendWin('pty-exit', { key }); });
   return { ok: true };
 }
@@ -175,7 +175,8 @@ setInterval(() => {
     r.confirm = isConfirm(screen);
     // 忙 = (非待确认) 且 (有工作文案 或 10 秒内有过屏幕变化)。时间窗迟滞 → 后台代理间歇重绘也不闪
     const wasBusy = r.busy;
-    r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 10000));
+    // 忙 = 非待确认 且 (工作文案 / 8秒内有原始数据输出 / 12秒内屏幕有变化)。lastDataAt 直接看 pty 输出,不依赖屏幕解析 → 最稳
+    r.busy = !r.confirm && (working || (r.lastDataAt && now - r.lastDataAt < 8000) || (r.lastChange && now - r.lastChange < 12000));
     if (wasBusy && !r.busy && !r.confirm) r.done = true;
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
@@ -186,6 +187,7 @@ ipcMain.handle('pty-write', (e, { key, data }) => { const r = ptys.get(key); if 
 ipcMain.handle('pty-resize', (e, { key, cols, rows }) => { const r = ptys.get(key); if (r) { try { r.proc.resize(cols, rows); } catch {} if (r.term) try { r.term.resize(cols, rows); } catch {} } });
 ipcMain.handle('pty-kill', (e, { key }) => { const r = ptys.get(key); if (r) { try { r.proc.kill(); } catch {} ptys.delete(key); } });
 ipcMain.handle('pty-capture', (e, { key }) => { const r = ptys.get(key); return r ? serialize(r.term) : ''; });
+ipcMain.handle('pty-debug', (e, { key }) => { const r = ptys.get(key); if (!r) return ''; const now = Date.now(); const head = `busy=${r.busy} confirm=${r.confirm} rows=${r.term && r.term.rows} cols=${r.term && r.term.cols} dataAgo=${r.lastDataAt ? (now - r.lastDataAt) + 'ms' : '-'} changeAgo=${r.lastChange ? (now - r.lastChange) + 'ms' : '-'}`; return head + '\n----headless screen----\n' + serialize(r.term); });   // 状态诊断:看主进程实际抓到的屏幕 + 判定
 ipcMain.handle('clipboard-write', (e, { text }) => { try { clipboard.writeText(String(text || '')); return true; } catch { return false; } });   // 原生剪贴板：不受 sandbox/CSP/焦点限制(navigator.clipboard 在 sandbox 下会失效)
 ipcMain.handle('clipboard-read', () => { try { return clipboard.readText() || ''; } catch { return ''; } });   // 与 write 对称，供 Ctrl+Shift+V 自处理粘贴
 // 代码热更新(#32)：手动检查/应用；只认官方 Release + SHA256 校验 + 壳兼容门 + 写 userData(不碰只读 .app)
