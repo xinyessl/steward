@@ -1597,10 +1597,17 @@ function closeSpecRef(){ const m=document.getElementById('specref-modal'),k=docu
 loadProjects().then(()=>{ refreshAll(); loadTerminal(); loadInbox(false); });
 loadHealth();
 function showAppVersion(){ const el=document.getElementById('app-ver'); if(!el)return;
-  const shellVer = window.STEWARD_VERSION ? ('v'+window.STEWARD_VERSION) : '';   // 桌面壳(dmg)版本，作兜底
-  // 优先显"实际运行的代码版本"(/api/version：git tag 或热更包 version.json)；热更后壳没换但代码换了，这样才显对
-  fetch('/api/version').then(r=>r.json()).then(j=>{ el.textContent = j.version || shellVer; }).catch(()=>{ el.textContent = shellVer; });
-  if(window.stewardPty&&window.stewardPty.checkCodeUpdate){ el.style.cursor='pointer'; el.title='点击检查代码更新（只更新代码，免重下整包）'; el.onclick=doCodeUpdate; }
+  const shellVer = window.STEWARD_VERSION ? ('v'+window.STEWARD_VERSION) : '';   // 桌面壳(dmg)版本
+  const isDesktop = !!(window.stewardPty&&window.stewardPty.checkCodeUpdate);
+  const render=(codeVer)=>{
+    // 壳(终端/状态检测/通知/剪贴板=main.js)只能装 dmg 更新，热更不碰它。代码版≠壳版 → 显「代码 · 壳vX」提醒去装新 dmg
+    if(isDesktop && shellVer && codeVer && codeVer!==shellVer){
+      el.innerHTML=esc(codeVer)+' <span style="opacity:.65;font-weight:400">· 壳'+esc(shellVer)+'</span>';
+      el.title='代码 '+codeVer+'（已热更）；但壳(终端/状态检测/通知)还是 '+shellVer+' —— 这些在壳里，必须装新 dmg 才更新（热更不更壳）。点击检查代码更新';
+    } else { el.textContent=codeVer||shellVer; el.title=isDesktop?'点击检查代码更新（只更新代码，免重下整包）':''; }
+    if(isDesktop){ el.style.cursor='pointer'; el.onclick=doCodeUpdate; }
+  };
+  fetch('/api/version').then(r=>r.json()).then(j=>render(j.version||shellVer)).catch(()=>render(shellVer));
 }
 showAppVersion();
 // 代码热更新(#32·桌面端)：点版本号检查 → 下载校验 → 重启生效
