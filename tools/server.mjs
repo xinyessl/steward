@@ -450,7 +450,9 @@ const server = http.createServer((req, res) => {
       let b = {}; try { b = JSON.parse(buf); } catch {}
       const batches = sanitizeBatches(b.batches);
       const f = path.join(p.path, 'docs/tasks.json');
-      let j = {}; try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { j = { title: '任务清单' }; }
+      let j = {}, curRaw = ''; try { curRaw = fs.readFileSync(f, 'utf8'); j = JSON.parse(curRaw); } catch { j = { title: '任务清单' }; }
+      // 保险:覆盖前把当前(非空)内容备份到 docs/.state/tasks.bak.json(gitignored)——万一还有 bug 也能一步恢复
+      try { const oldB = Array.isArray(j.batches) ? j.batches.reduce((a, x) => a + ((x.tasks || []).length), 0) : 0; if (curRaw && oldB) { const bd = path.join(p.path, 'docs/.state'); fs.mkdirSync(bd, { recursive: true }); fs.writeFileSync(path.join(bd, 'tasks.bak.json'), curRaw); } } catch {}
       j.batches = batches; j.items = [];
       try { fs.writeFileSync(f, JSON.stringify(j, null, 2)); } catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String((e && e.message) || e) })); }
       send(res, 200, JSON.stringify({ ok: true, batches }));

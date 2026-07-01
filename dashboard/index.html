@@ -1528,14 +1528,25 @@ function openOverview(){ document.getElementById('ov-modal').classList.add('on')
 function closeOverview(){ document.getElementById('ov-modal').classList.remove('on'); }
 // ===== 任务清单（进件批次模型 · 项目级 · 存 docs/tasks.json 的 batches · 本地不入库） =====
 let batches=[];
+let batchesProject=null;   // 当前 batches 属于哪个项目(防跨项目误写)
+let batchesLoaded=false;   // 是否成功载入(未载入禁止保存，避免用空/旧数据覆盖磁盘)
 let taskFilter='all';
 let collapsedBatches=new Set();
-async function loadBatches(){
-  if(!PROJECT){ batches=[]; renderTasks(); return; }
-  try{ const r=await (await fetch('/api/batches?project='+PROJECT+'&t='+Date.now())).json(); batches=Array.isArray(r.batches)?r.batches:[]; }catch(e){ batches=[]; }
-  renderTasks();
+async function loadBatches(retry){
+  const proj=PROJECT;
+  if(!proj){ batches=[]; batchesProject=null; batchesLoaded=false; renderTasks(); return; }
+  try{
+    const r=await (await fetch('/api/batches?project='+proj+'&t='+Date.now())).json();
+    if(proj!==PROJECT) return;                                   // 载入期间又切了项目 → 丢弃本次结果(防串项目)
+    batches=Array.isArray(r.batches)?r.batches:[]; batchesProject=proj; batchesLoaded=true; renderTasks();
+  }catch(e){
+    if(proj!==PROJECT) return;
+    if(!retry){ return loadBatches(true); }                      // 瞬时失败自动重试一次
+    batchesLoaded=false; renderTasks(); toast('任务清单载入失败，点右上「刷新」重试(磁盘数据未动)');   // 仍失败:不标 loaded → 禁止保存覆盖
+  }
 }
-function saveBatches(){ if(!PROJECT)return; fetch('/api/batches?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batches})}).catch(()=>{}); }
+// 关键防丢:未成功载入、或 batches 不属于当前项目 → 绝不保存(否则切项目/载入失败时会用空或旧数据覆盖磁盘)
+function saveBatches(){ if(!PROJECT||!batchesLoaded||batchesProject!==PROJECT)return; fetch('/api/batches?project='+PROJECT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batches})}).catch(()=>{}); }
 function tfmt(ts){ if(!ts)return''; const d=new Date(ts),p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
 function srcMeta(s){ const t=(s&&s.type)||'manual'; return t==='feishu'?{ic:'ti-file-text',lb:'飞书',cls:'src-feishu'}:t==='cli'?{ic:'ti-terminal-2',lb:'CLI',cls:'src-cli'}:{ic:'ti-pencil',lb:'手动',cls:'src-manual'}; }
 function setTaskFilter(k){ taskFilter=k; renderTasks(); }
