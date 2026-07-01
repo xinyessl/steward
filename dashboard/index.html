@@ -947,7 +947,7 @@ function renderTabs(){
   if(_editingTab) return;
   document.getElementById('term-tabs').innerHTML=windows.map((w,i)=>{
     const st=winState[w.key]||{}, s=winS(st), stt=winStateLabel(s);
-    const lab = w.userLabel || ((st.title&&st.title.trim()) ? st.title : w.label);   // 用户命名 > 会话话题 > 默认名
+    const lab = w.userLabel || (w.sessionId && sessionNames[w.sessionId]) || ((st.title&&st.title.trim()) ? st.title : w.label);   // 用户命名(内存) > 该会话持久化的自定义名 > 会话话题 > 默认名
     const act = (st.activity&&st.activity.trim())? st.activity : '';
     const attn = s==='attn';   // ③ 待确认：仅当 claude 真的停下在等你确认/选择（confirm 检测），空闲不显示
     const tip=('话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')+'\n(点 ✎ 或双击标题可重命名)').replace(/"/g,'');
@@ -961,7 +961,9 @@ function startRename(el,i){   // 把 tab 标题变成可编辑
   try{ const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}
   let done=false;
   const finish=(save)=>{ if(done)return; done=true; _editingTab=false; el.contentEditable='false'; el.classList.remove('editing');
-    if(save){ const nv=(el.textContent||'').replace(/\s+/g,' ').trim(); w.userLabel = nv || undefined; }
+    if(save){ const nv=(el.textContent||'').replace(/\s+/g,' ').trim(); w.userLabel = nv || undefined;
+      if(w.sessionId){ sessionNames[w.sessionId]=nv; fetch('/api/session-name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:w.sessionId,name:nv})}).catch(()=>{}); }   // 按会话持久化 → 历史列表/重开都显这个名
+    }
     renderTabs();
   };
   el.onblur=()=>finish(true);
@@ -1027,7 +1029,7 @@ async function toggleHistory(){
   try{
     const r=await (await fetch('/api/claude-sessions?path='+encodeURIComponent(projPath(PROJECT)))).json();
     const ss=r.sessions||[];
-    pop.innerHTML='<div class="hpt">该项目的所有对话（点开为新窗口继续）</div>'+(ss.length?ss.map(s=>{const lb=(s.preview||'对话').slice(0,14);return `<div class="hrow" onclick="openSession('${jss(s.id)}','${jss(lb)}')"><div class="hp1">${esc(s.preview||'(无预览)')}</div><div class="hp2">${esc(new Date(s.mtime).toLocaleString())} · ${esc(String(s.id).slice(0,8))}</div><button class="hdel" title="删除这段历史对话" onclick="event.stopPropagation();delSession('${jss(s.id)}')"><i class="ti ti-trash"></i></button></div>`;}).join(''):'<div class="sst" style="padding:10px">暂无历史对话</div>');
+    pop.innerHTML='<div class="hpt">该项目的所有对话（点开为新窗口继续）</div>'+(ss.length?ss.map(s=>{const nm=s.name||''; const lb=(nm||s.preview||'对话').slice(0,20); const sub=(nm?(esc((s.preview||'').slice(0,22))+' · '):'')+esc(new Date(s.mtime).toLocaleString())+' · '+esc(String(s.id).slice(0,8)); return `<div class="hrow" onclick="openSession('${jss(s.id)}','${jss(lb)}')"><div class="hp1">${nm?('<i class="ti ti-pencil"></i> '+esc(nm)):esc(s.preview||'(无预览)')}</div><div class="hp2">${sub}</div><button class="hdel" title="删除这段历史对话" onclick="event.stopPropagation();delSession('${jss(s.id)}')"><i class="ti ti-trash"></i></button></div>`;}).join(''):'<div class="sst" style="padding:10px">暂无历史对话</div>');
   }catch(e){ pop.innerHTML='<div class="hpt">历史对话</div><div class="sst" style="padding:10px">读取失败</div>'; }
 }
 function delSession(id){
@@ -1037,7 +1039,9 @@ function delSession(id){
   },{title:'删除这段历史对话？',okText:'删除',danger:true});
 }
 
-function refreshAll(){ if(!PROJECT)return; loadBoard();renderTeam();loadBatches(); }
+function refreshAll(){ if(!PROJECT)return; loadBoard();renderTeam();loadBatches();loadSessionNames(); }
+let sessionNames={};   // {sessionId: 自定义名}——重命名按会话持久化(服务端 cli-names.json)，tab 与历史都读它
+async function loadSessionNames(){ try{ sessionNames=(await (await fetch('/api/session-names?t='+Date.now())).json()).names||{}; if(typeof renderTabs==='function')renderTabs(); }catch(e){} }
 // —— 实时预览（左侧嵌入本项目运行中的页面）——
 function previewKey(){ return 'preview-url:'+(PROJECT||''); }
 function togglePreview(){

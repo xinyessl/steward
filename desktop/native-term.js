@@ -137,6 +137,7 @@
       const arr = await window.stewardPty.states(); const map = {}, attn = {}, busyP = {}, doneP = {}; const NOW = Date.now();
       arr.forEach(s => {
         map[s.key] = { busy: s.busy, confirm: s.confirm, done: s.done, title: s.title, activity: s.activity };
+        if (s.sessionId) { const w = windows.find(x => x.key === s.key); if (w && !w.sessionId) w.sessionId = s.sessionId; }   // 新窗口会话 id 从钩子回填 → 重命名可按会话持久化
         if (s.confirm) attn[s.projectId] = (attn[s.projectId] || 0) + 1;                                 // 待确认
         else if (s.busy) busyP[s.projectId] = (busyP[s.projectId] || 0) + 1;                             // 干活中
         if (s.done && s.doneAt && NOW - s.doneAt < 120000 && s.projectId !== PROJECT) doneP[s.projectId] = (doneP[s.projectId] || 0) + 1;   // 刚完成(120s 内·非当前项目)

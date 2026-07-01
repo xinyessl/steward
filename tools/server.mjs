@@ -24,6 +24,10 @@ const SELF_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${P
 const SELF_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`, `http://[::1]:${PORT}`]);
 // 用户数据目录（与工具本体隔离，像 VSCode）：项目注册表存这里，工具目录保持干净/可分享。可用 STEWARD_DATA 覆盖。
 const DATA_DIR = process.env.STEWARD_DATA || path.join(os.homedir(), '.steward');
+// CLI 对话自定义名(按会话 id 存·本机个人化·不入库)：重命名 tab 落这里，历史列表与 tab 都读它
+const NAMES_FILE = path.join(DATA_DIR, 'cli-names.json');
+function readNames() { try { return JSON.parse(fs.readFileSync(NAMES_FILE, 'utf8')) || {}; } catch { return {}; } }
+function writeName(sid, name) { if (!sid) return; const m = readNames(); if (name && name.trim()) m[sid] = name.trim().slice(0, 120); else delete m[sid]; try { fs.mkdirSync(path.dirname(NAMES_FILE), { recursive: true }); fs.writeFileSync(NAMES_FILE, JSON.stringify(m)); } catch {} }
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const LESSONS_FILE = path.join(ROOT, 'lessons.md');   // Steward 经验库：放工具仓库根、提交进 git，随 steward 沉淀+共享（跨项目、跨人）
 try {
@@ -263,8 +267,8 @@ function sessionPreview(fp) {
 }
 function listClaudeSessions(abs) {
   const dir = path.join(os.homedir(), '.claude', 'projects', encodeCwd(abs));
-  const out = [];
-  try { for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.jsonl')) continue; const fp = path.join(dir, f); const st = fs.statSync(fp); out.push({ id: f.replace(/\.jsonl$/, ''), mtime: st.mtimeMs, preview: sessionPreview(fp) }); } } catch {}
+  const out = [], names = readNames();
+  try { for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.jsonl')) continue; const fp = path.join(dir, f); const st = fs.statSync(fp); const id = f.replace(/\.jsonl$/, ''); out.push({ id, mtime: st.mtimeMs, preview: sessionPreview(fp), name: names[id] || '' }); } } catch {}
   return out.sort((a, b) => b.mtime - a.mtime);
 }
 
@@ -722,6 +726,8 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (url.pathname === '/api/claude-sessions') { const abs = url.searchParams.get('path') || ''; return send(res, 200, JSON.stringify({ sessions: abs ? listClaudeSessions(abs) : [] })); }
+  if (url.pathname === '/api/session-names') { return send(res, 200, JSON.stringify({ names: readNames() })); }   // {sessionId: 自定义名}
+  if (url.pathname === '/api/session-name' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} writeName(b.sessionId, b.name); send(res, 200, JSON.stringify({ ok: true })); }); return; }
   if (url.pathname === '/api/commands') {   // 该项目可用的斜杠命令（读 .claude/commands/*.md 的名字+description）
     const p = projById(pid); if (!p) return send(res, 200, JSON.stringify({ commands: [] })); const dir = path.join(p.path, '.claude/commands'); const out = [];
     try { for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.md')) continue; let desc = ''; try { const m = fs.readFileSync(path.join(dir, f), 'utf8').slice(0, 800).match(/^description:\s*(.+)$/m); if (m) desc = m[1].trim(); } catch {} out.push({ name: f.replace(/\.md$/, ''), desc }); } } catch {}

@@ -42,8 +42,8 @@ const HOOK_SETTINGS = path.join(STATE_DIR, 'hooks.json');
 function writeHookFiles() {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
-    // hook 脚本:按 STEWARD_WIN 把状态写到 <dir>/<key>.json，不依赖 stdin
-    fs.writeFileSync(HOOK_SCRIPT, `const fs=require('fs'),path=require('path');const st=process.argv[2]||'idle';const k=process.env.STEWARD_WIN,d=process.env.STEWARD_STATE_DIR;if(k&&d){try{fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,k+'.json'),JSON.stringify({state:st,ts:Date.now()}))}catch(e){}}\n`);
+    // hook 脚本:按 STEWARD_WIN 把状态写到 <dir>/<key>.json;并从 stdin 的 JSON 读 session_id 一并记下(供重命名按会话持久化)
+    fs.writeFileSync(HOOK_SCRIPT, `const fs=require('fs'),path=require('path');let sid='';try{sid=(JSON.parse(fs.readFileSync(0,'utf8'))||{}).session_id||''}catch(e){}const st=process.argv[2]||'idle';const k=process.env.STEWARD_WIN,d=process.env.STEWARD_STATE_DIR;if(k&&d){try{fs.mkdirSync(d,{recursive:true});const f=path.join(d,k+'.json');let prev={};try{prev=JSON.parse(fs.readFileSync(f,'utf8'))}catch(e){}fs.writeFileSync(f,JSON.stringify({state:st,session:sid||prev.session||'',ts:Date.now()}))}catch(e){}}\n`);
     const cmd = s => ({ type: 'command', command: `node "${HOOK_SCRIPT}" ${s}` });
     const evt = s => [{ matcher: '', hooks: [cmd(s)] }];
     const settings = { hooks: {
@@ -153,7 +153,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
     return { ok: false, error: 'claude 启动失败：' + (err && err.message) };
   }
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
-  const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
+  const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd, sessionId: sessionId || '' };
   ptys.set(key, rec);
   try { fs.writeFileSync(path.join(STATE_DIR, key + '.json'), JSON.stringify({ state: 'init', ts: Date.now() })); } catch {}   // 初始 init(非 idle):区分"钩子还没触发"(走屏幕兜底) vs "钩子说空闲"(信钩子)
   const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
@@ -213,6 +213,7 @@ setInterval(() => {
     const wasBusy = r.busy;
     // 待确认 = 屏幕出现菜单(❯ N.)/y-n（稳定，不会闪），或 claude 权限通知钩子(waiting)
     const hookState = readHookState(key);
+    if (hookState && hookState.session && !r.sessionId) r.sessionId = hookState.session;   // 新窗口的会话 id 从钩子补齐(供重命名按会话持久化)
     const tail = s.split('\n').slice(-12).join('\n');
     // 屏幕回退信号(仅当钩子未生效时用):不含 ✻ —— claude 用 ✻ 作"已完成消息"的项目符号(如 ✻ Worked for 3m 33s)，会误命中→卡 busy(诊断确认)
     const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background/.test(tail);
@@ -263,7 +264,7 @@ ipcMain.handle('code-update-apply', async () => {
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 });
 ipcMain.handle('app-relaunch', () => { app.relaunch(); app.exit(0); });
-ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, done: !!r.done, doneAt: r.doneAt || 0, title: r.title || '', activity: r.activity || '' })));
+ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, done: !!r.done, doneAt: r.doneAt || 0, title: r.title || '', activity: r.activity || '', sessionId: r.sessionId || '' })));
 
 // ---------- 3) 窗口 + 注入 native-term ----------
 function createWindow() {
