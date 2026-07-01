@@ -30,7 +30,7 @@ const ROOT = resolveRoot();
 const UPDATE_BASE = 'https://github.com/xinyessl/steward/releases/latest/download';   // 只认官方 Release(HTTPS) + 下面 SHA256 校验
 function currentCodeVersion() { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8')).version || ('v' + app.getVersion()); } catch { return 'v' + app.getVersion(); } }
 const SERVER = path.join(ROOT, 'tools', 'server.mjs');
-const PORT = process.env.PORT || 5180;   // 桌面端用 5180，避开 web 版的 5178（同时开也不撞）
+const PORT = process.env.PORT || 51790;   // 桌面端用 51790，避开 web 版的 51780（同时开也不撞）
 let serverProc = null, mainWin = null;
 
 // ===== claude 状态钩子(权威态，替代屏幕猜测) =====

@@ -51,7 +51,7 @@ sudo apt install -y ttyd      # Ubuntu 22.04+ 自带；旧版没有就从 ttyd r
    # claude CLI 也装在 WSL 内（按官方说明）
    ```
 3. **把仓库 clone 在 WSL 的 Linux 文件系统里**（如 `~/steward`），**别放在 `/mnt/c/...`**——`fs.watch` 在跨盘挂载点不可靠，看板不会自动刷新。
-4. 在 WSL 里 `bash tools/start.sh`，然后用 **Windows 浏览器**打开 http://127.0.0.1:5178（WSL2 自动转发 localhost）。
+4. 在 WSL 里 `bash tools/start.sh`，然后用 **Windows 浏览器**打开 http://127.0.0.1:51780（WSL2 自动转发 localhost）。
 
 > **tmux 是可选的**：装不上也能用——控制台照常跑，只是失去「刷新页面后回放终端整屏」「窗口忙/待确认状态灯」「滚动选择复制」这几个增强。所以别被它卡住。
 >
@@ -69,7 +69,7 @@ sudo apt install -y ttyd      # Ubuntu 22.04+ 自带；旧版没有就从 ttyd r
 ```bash
 git clone https://github.com/xinyessl/steward.git
 cd steward
-bash tools/start.sh          # → http://127.0.0.1:5178
+bash tools/start.sh          # → http://127.0.0.1:51780
 ```
 
 ## 快速上手

@@ -5,7 +5,7 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-PORT="${PORT:-5178}"
+PORT="${PORT:-51780}"
 export CLAUDE_EXTRA="${CLAUDE_EXTRA:---dangerously-skip-permissions}"  # 本地放开权限，让对话能自动改文件/起子 agent
 
 echo "▶ 清理旧实例…"

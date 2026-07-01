@@ -4,7 +4,7 @@
 
 ## 架构
 - **复用** `tools/server.mjs`：Electron 主进程 `fork` 它（electron 当 node 跑），spec/board/todo/feishu/health 等 API **原样可用**。
-- **窗口**：加载 `http://127.0.0.1:5180/`（桌面端用 5180，避开 web 版 5178）。
+- **窗口**：加载 `http://127.0.0.1:51790/`（桌面端用 51790，避开 web 版 51780）。
 - **终端（唯一重写处）**：`main.js` 用 **node-pty** 跑 `claude`（mac→fork-pty / win→ConPTY，都原生）；`native-term.js` 在渲染端用 **xterm.js** 显示，经 `preload.js` 的 IPC 桥(`window.stewardPty`)收发。**web 版的 ttyd 路径完全不动**——native-term.js 只在 Electron 里注入。
 - 忙/待确认/话题：主进程用 `@xterm/headless` 渲染每个 pty 的屏幕，套用与 server 同款启发式，渲染端轮询取。
 

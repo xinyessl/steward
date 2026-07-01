@@ -2,7 +2,7 @@
 
 ## 启动控制台（推荐入口）
 ```bash
-node tools/server.mjs          # 默认 http://127.0.0.1:5178
+node tools/server.mjs          # 默认 http://127.0.0.1:51780
 # 可选：PORT=6001 node tools/server.mjs
 ```
 打开浏览器即可：左侧实时进度看板，右侧直接对话调起编排器（在仓库内跑 `claude`）。

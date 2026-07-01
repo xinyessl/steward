@@ -7,8 +7,8 @@
 ---
 
 ## 0. 目标与「装好」的判定标准
-- 启动后 `http://127.0.0.1:5178` 能打开控制台。
-- `curl -s http://127.0.0.1:5178/api/health` 返回 JSON，其中 `node` 有值、`ttyd:true`（`tmux` 可为 false，可选）。
+- 启动后 `http://127.0.0.1:51780` 能打开控制台。
+- `curl -s http://127.0.0.1:51780/api/health` 返回 JSON，其中 `node` 有值、`ttyd:true`（`tmux` 可为 false，可选）。
 - 满足以上即视为安装成功。
 
 ---
@@ -60,9 +60,9 @@ sudo apt update && sudo apt install -y nodejs npm ttyd tmux
 
 ## 3. 启动
 ```bash
-bash tools/start.sh          # 前台运行，Ctrl+C 停止 → http://127.0.0.1:5178
+bash tools/start.sh          # 前台运行，Ctrl+C 停止 → http://127.0.0.1:51780
 ```
-脚本会自检 ttyd/tmux 并打印就绪情况，然后起服务在 5178 端口。
+脚本会自检 ttyd/tmux 并打印就绪情况，然后起服务在 51780 端口。
 
 如需后台常驻：
 ```bash
@@ -74,11 +74,11 @@ nohup node tools/server.mjs > ~/.steward/server.log 2>&1 &
 ## 4. 验证（务必做）
 ```bash
 # 等 1~2 秒后：
-curl -s http://127.0.0.1:5178/api/health
+curl -s http://127.0.0.1:51780/api/health
 # 期望类似：{"claude":{...},"ttyd":true,"tmux":true,"node":"v22.x","projects":0}
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5178/   # 期望 200
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:51780/   # 期望 200
 ```
-浏览器打开 `http://127.0.0.1:5178`。首次 `projects:0` 是正常的（空工具，还没纳管项目）。
+浏览器打开 `http://127.0.0.1:51780`。首次 `projects:0` 是正常的（空工具，还没纳管项目）。
 
 ---
 
@@ -90,7 +90,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5178/   # 期望 200
 ---
 
 ## 6. 排障
-- **打不开 / 端口被占**：`lsof -nP -iTCP:5178 -sTCP:LISTEN` 看占用；换端口 `PORT=5179 bash tools/start.sh`。
+- **打不开 / 端口被占**：`lsof -nP -iTCP:51780 -sTCP:LISTEN` 看占用；换端口 `PORT=5179 bash tools/start.sh`。
 - **就绪条显示 ✗ ttyd**：没装 ttyd，内嵌终端不可用（其余正常）；按 §2 装。
 - **✗ claude 未登录**：在任一终端跑一次 `claude` 完成登录。
 - **tmux 显示 ✗**：可选项，不影响使用；想要增强按 §2 装。

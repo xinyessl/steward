@@ -51,7 +51,7 @@ This tool relies on Unix-style components (`ttyd` / `tmux` / `lsof` / `pkill`), 
    # install the claude CLI inside WSL too (per its official instructions)
    ```
 3. **Clone the repo into the WSL Linux filesystem** (e.g. `~/steward`), **not under `/mnt/c/...`** — `fs.watch` is unreliable across the Windows mount, so the board won't auto-refresh there.
-4. Run `bash tools/start.sh` inside WSL, then open http://127.0.0.1:5178 in your **Windows browser** (WSL2 forwards localhost automatically).
+4. Run `bash tools/start.sh` inside WSL, then open http://127.0.0.1:51780 in your **Windows browser** (WSL2 forwards localhost automatically).
 
 > **tmux is optional**: if you can't install it, the console still runs — you only lose "replay the full terminal screen after a refresh", the busy/needs-confirmation status lights, and drag-to-copy. So don't let it block you.
 >
@@ -68,7 +68,7 @@ This tool relies on Unix-style components (`ttyd` / `tmux` / `lsof` / `pkill`), 
 ```bash
 git clone https://github.com/xinyessl/steward.git
 cd steward
-bash tools/start.sh          # → http://127.0.0.1:5178
+bash tools/start.sh          # → http://127.0.0.1:51780
 ```
 
 ## Quick start

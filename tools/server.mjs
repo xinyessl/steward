@@ -7,7 +7,7 @@
 //   - GET  /api/agents?project=ID   该项目 AI 团队状态
 //   - GET  /api/events              SSE：任一项目 docs/ 变更时推送
 //   - POST /api/chat?project=ID     在该项目目录内跑 `claude -p` 调起编排器
-// 用法：node tools/server.mjs  → 打开 http://127.0.0.1:5178
+// 用法：node tools/server.mjs  → 打开 http://127.0.0.1:51780
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +17,7 @@ import os from 'node:os';
 import net from 'node:net';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'); // 控制台宿主目录（工具本体）
-const PORT = process.env.PORT || 5178;
+const PORT = process.env.PORT || 51780;
 // 同源/同机访问白名单（#6）：本地单用户控制台只接受来自控制台自身的请求，
 // 借此挡住「任意网站跨源调本地 API」与 DNS-rebinding（Host 被改成攻击者域名）。
 const SELF_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);

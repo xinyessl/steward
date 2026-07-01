@@ -26,7 +26,7 @@
 > 想改"以后新建项目的默认形态" → 改 `templates/`，**不影响已存在的项目**。改"中枢自己的行为" → 改本文件 / `tools/`。
 
 ## 你在 steward 里能做的事
-1. **起控制台**：`bash tools/start.sh` → http://127.0.0.1:5178。
+1. **起控制台**：`bash tools/start.sh` → http://127.0.0.1:51780。
 2. **纳管项目**：`bash tools/new-project.sh <id> <名称> <绝对路径>`（从 `templates/` 复制骨架 + 注册），或控制台「新增项目」。
 3. **维护模板**：编辑 `templates/*`（影响以后新建的项目）。
 4. **维护控制台**：改 `tools/server.mjs` / `dashboard/`。
