@@ -2,10 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- CSP(#26)：禁远程脚本(挡 CDN 投毒/注入的 <script src>)；marked/DOMPurify 本地随包；允许本机 ttyd iframe + 同源 SSE；图标字体仍走 jsdelivr(非可执行) -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; frame-src 'self' http: https:; object-src 'none'; base-uri 'none'">
+<!-- CSP(#26)：禁远程脚本；marked/DOMPurify/图标字体全部本地随包(不依赖 CDN，国内网络也不丢图标)；允许本机 ttyd iframe + 同源 SSE -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; font-src 'self' data:; connect-src 'self'; frame-src 'self' http: https:; object-src 'none'; base-uri 'none'">
 <title>Steward 控制台</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/dashboard/vendor/tabler/tabler-icons.min.css">
 <script src="/dashboard/vendor/marked.min.js"></script>
 <script src="/dashboard/vendor/purify.min.js"></script>
 <style>

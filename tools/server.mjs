@@ -294,7 +294,7 @@ function scaffoldProject(dest, name, id) {
   fs.mkdirSync(path.join(dest, 'docs/.state'), { recursive: true });
   if (!fs.existsSync(path.join(dest, 'docs/.state/agents.json'))) fs.writeFileSync(path.join(dest, 'docs/.state/agents.json'), JSON.stringify({ updatedAt: '', agents: [{ id: 'dev', name: '开发', icon: 'code', status: 'idle', current: '', since: '' }] }, null, 2));
 }
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' };
 const sseClients = new Set();
 function sseBroadcast(obj) { const s = 'data: ' + JSON.stringify(obj) + '\n\n'; for (const c of sseClients) { try { c.write(s); } catch {} } }
 
