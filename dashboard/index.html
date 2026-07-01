@@ -942,6 +942,7 @@ function activate(idx){
 function winS(st){ return st.busy ? 'working' : (st.confirm ? 'attn' : 'idle'); }
 function winStateLabel(s){ return s==='working'?'正在干活':(s==='attn'?'需确认 / 出错':'空闲 · 待派活'); }
 let _editingTab=false;   // 正在改 tab 名时，暂停轮询重渲染，避免冲掉编辑
+window.isRenamingTab=()=>_editingTab;   // 供 native-term 的 activate 判断"编辑中不抢焦点"
 function renderTabs(){
   if(_editingTab) return;
   document.getElementById('term-tabs').innerHTML=windows.map((w,i)=>{

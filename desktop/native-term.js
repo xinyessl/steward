@@ -89,8 +89,8 @@
     if (idx < 0 || idx >= windows.length) return; activeIdx = idx;
     document.querySelectorAll('#term-host .nterm').forEach(el => { el.style.display = (el.dataset.key === windows[idx].key) ? 'block' : 'none'; });
     try { window.stewardPty.setActive(windows[idx].key); } catch (e) {}   // 上报当前看的 tab → 主进程据此决定要不要弹确认通知
-    const t = terms[windows[idx].key]; if (t) setTimeout(() => { t.doFit(); t.term.focus(); }, 30);
-    renderTabs();
+    const t = terms[windows[idx].key]; if (t) setTimeout(() => { t.doFit(); if (!(window.isRenamingTab && window.isRenamingTab())) t.term.focus(); }, 30);   // 重命名编辑中不抢焦点
+    document.querySelectorAll('#term-tabs .ttab').forEach((el, i) => el.classList.toggle('on', i === activeIdx));   // 只切高亮，不重建 tab DOM(重建会让双击重命名的元素被换掉→双击失效)；标签/状态点由 1.5s 轮询的 renderTabs 刷新
   };
   window.closeWin = async function (idx) {
     const w = windows[idx]; if (!w) return;
@@ -98,7 +98,7 @@
     const el = document.querySelector('#term-host .nterm[data-key="' + w.key + '"]'); if (el) el.remove();
     delete terms[w.key]; windows.splice(idx, 1);
     if (!windows.length) { activeIdx = -1; renderTabs(); return; }
-    activate(Math.min(idx, windows.length - 1));
+    renderTabs(); activate(Math.min(idx, windows.length - 1));   // activate 不再重建 DOM，关窗后需自己 renderTabs 去掉已关 tab
   };
   window.sendToTerm = async function (text, enter) {
     let w = windows[activeIdx] || windows[0];
