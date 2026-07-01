@@ -210,7 +210,6 @@ setInterval(() => {
     if (r.lastSig !== undefined && s !== r.lastSig) r.lastChange = now;   // 记录"最近一次屏幕变化"时刻(回退用)
     r.lastSig = s;
     const wasConfirm = r.confirm;
-    const wasBusy = r.busy;
     // 待确认 = 屏幕出现菜单(❯ N.)/y-n（稳定，不会闪），或 claude 权限通知钩子(waiting)
     const hookState = readHookState(key);
     if (hookState && hookState.session && !r.sessionId) r.sessionId = hookState.session;   // 新窗口的会话 id 从钩子补齐(供重命名按会话持久化)
@@ -225,7 +224,10 @@ setInterval(() => {
       // 钩子还没触发(pre-write=init)或无数据(老 claude)→ 屏幕启发式 + 6 秒时间窗兜底
       r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
     }
-    if (wasBusy && !r.busy && !r.confirm) { r.done = true; r.doneAt = now; notifyDone(r, key); }   // 干完:记时刻(项目栏"刚完成"角标) + 后台时弹通知(B)
+    // 完成 = 真回合结束(钩子 doing→idle)。开机欢迎屏/重绘引起的"屏幕兜底忙→闲"不算完成，避免刚开的窗口就误亮蓝灯/误弹完成通知
+    const hs = hookState && hookState.state;
+    if (r.lastHookState === 'doing' && hs === 'idle' && !r.confirm) { r.done = true; r.doneAt = now; notifyDone(r, key); }
+    r.lastHookState = hs;
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
 }, 1200);
