@@ -155,7 +155,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId }) {
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
   const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd };
   ptys.set(key, rec);
-  try { fs.writeFileSync(path.join(STATE_DIR, key + '.json'), JSON.stringify({ state: 'idle', ts: Date.now() })); } catch {}   // 初始置闲，等钩子事件覆盖
+  try { fs.writeFileSync(path.join(STATE_DIR, key + '.json'), JSON.stringify({ state: 'init', ts: Date.now() })); } catch {}   // 初始 init(非 idle):区分"钩子还没触发"(走屏幕兜底) vs "钩子说空闲"(信钩子)
   const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
   proc.onData(d => { rec.lastDataAt = Date.now(); if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });   // 原始数据流时刻:claude 一输出就更新,最可靠的"在干活"信号(不依赖屏幕解析)
   proc.onExit(() => { ptys.delete(key); try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} sendWin('pty-exit', { key }); });
@@ -214,13 +214,14 @@ setInterval(() => {
     // 待确认 = 屏幕出现菜单(❯ N.)/y-n（稳定，不会闪），或 claude 权限通知钩子(waiting)
     const hookState = readHookState(key);
     const tail = s.split('\n').slice(-12).join('\n');
-    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background|[✻✶✳✷✺]/.test(tail);   // 屏幕明显在干活(spinner/esc/tokens)
+    // 屏幕回退信号(仅当钩子未生效时用):不含 ✻ —— claude 用 ✻ 作"已完成消息"的项目符号(如 ✻ Worked for 3m 33s)，会误命中→卡 busy(诊断确认)
+    const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background/.test(tail);
     r.confirm = isConfirm(screen) || (hookState && hookState.state === 'waiting');
-    if (hookState && hookState.state) {
-      // 权威态:claude 钩子说了算(UserPromptSubmit→doing / Stop→idle)，事件驱动无时间窗 → 不闪；再 OR 屏幕兜底，防个别钩子没触发
-      r.busy = !r.confirm && (hookState.state === 'doing' || working);
+    if (hookState && (hookState.state === 'doing' || hookState.state === 'idle')) {
+      // 钩子已生效(有真状态 doing/idle)→ 完全信它，绝不再叠屏幕(否则 ✻/残留文字会误判)。事件驱动、无时间窗 → 不闪且准
+      r.busy = !r.confirm && hookState.state === 'doing';
     } else {
-      // 回退(无钩子数据:老 claude / 刚启动还没事件):屏幕启发式 + 6 秒时间窗
+      // 钩子还没触发(pre-write=init)或无数据(老 claude)→ 屏幕启发式 + 6 秒时间窗兜底
       r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
     }
     if (wasBusy && !r.busy && !r.confirm) { r.done = true; r.doneAt = now; notifyDone(r, key); }   // 干完:记时刻(项目栏"刚完成"角标) + 后台时弹通知(B)
