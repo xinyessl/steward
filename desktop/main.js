@@ -102,6 +102,29 @@ function findClaude() {
 const CLAUDE = findClaude();
 console.log('[steward] claude =', CLAUDE);
 const EXTRA = (process.env.CLAUDE_EXTRA || '--dangerously-skip-permissions').split(' ').filter(Boolean);
+// codex CLI：定位 + 真身可执行校验（npm 平台二进制可能缺失 → which 有软链但一跑 ENOENT，必须真跑 --version 确认）
+function findCodex() {
+  const cands = [];
+  if (process.env.CODEX_BIN) cands.push(process.env.CODEX_BIN);
+  const exes = process.platform === 'win32' ? ['codex.cmd', 'codex.exe', 'codex'] : ['codex'];
+  for (const dir of (SHELL_PATH || '').split(path.delimiter)) if (dir) for (const e of exes) cands.push(path.join(dir, e));
+  for (const c of ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', path.join(os.homedir(), '.local/bin/codex')]) cands.push(c);
+  for (const c of cands) { try { if (c && fs.existsSync(c)) { const r = spawnSync(c, ['--version'], { encoding: 'utf8', timeout: 8000 }); if (r.status === 0 && /codex/i.test(r.stdout || '')) return c; } } catch {} }
+  return '';   // 空 = 未装/装坏（前端据此灰掉 codex 入口）
+}
+const CODEX = findCodex();
+console.log('[steward] codex =', CODEX || '(未检测到)');
+const CODEX_EXTRA = (process.env.CODEX_EXTRA || '--dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust').split(' ').filter(Boolean);
+// codex 状态钩子：codex 没有 --settings，用 -c hooks.<Event>=[...] 内联挂。
+// 踩坑：-c 值里带双引号会让 codex 的 TOML 解析退化成"整个值当字符串"报错 → 每窗口生成无参数 wrapper 脚本(exec 复用 report-state.cjs，同一套状态文件格式)，TOML 里用单引号字面串引其裸路径。
+function codexHookArgs(key) {
+  const dir = path.join(STATE_DIR, 'codex-' + key);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+  const mk = (st) => { const fp = path.join(dir, st + '.sh'); try { fs.writeFileSync(fp, `#!/bin/bash\nexec node ${JSON.stringify(HOOK_SCRIPT)} ${st}\n`); fs.chmodSync(fp, 0o755); } catch {} return fp; };
+  const doing = mk('doing'), idle = mk('idle'), waiting = mk('waiting');
+  const ev = (fp) => `[{hooks=[{type='command',command='${fp}'}]}]`;
+  return ['-c', `hooks.SessionStart=${ev(idle)}`, '-c', `hooks.UserPromptSubmit=${ev(doing)}`, '-c', `hooks.PreToolUse=${ev(doing)}`, '-c', `hooks.PostToolUse=${ev(doing)}`, '-c', `hooks.PermissionRequest=${ev(waiting)}`, '-c', `hooks.Stop=${ev(idle)}`];
+}
 
 const ptys = new Map();   // key -> { proc, term(headless), lastSig, busy, confirm, title, activity, projectId, cwd }
 
@@ -130,36 +153,48 @@ function allowedCwd(cwd) {
   try { paths = (JSON.parse(fs.readFileSync(path.join(dataDir, 'projects.json'), 'utf8')).projects || []).map(p => p.path); } catch {}
   return paths.some(p => { try { const rp = fs.realpathSync(p); return real === rp || real.startsWith(rp + path.sep); } catch { return false; } });
 }
-function ptyCreate(e, { key, projectId, cwd, sessionId }) {
+function ptyCreate(e, { key, projectId, cwd, sessionId, engine }) {
   if (!pty) return { ok: false, error: 'node-pty 未安装/未编译，先在 desktop/ 跑 npm install' };
   if (ptys.has(key)) return { ok: true };
   if (!allowedCwd(cwd)) return { ok: false, error: 'cwd 不在已纳管项目范围内，已拒绝(安全)' };
-  const args = [...EXTRA]; if (sessionId) args.push('--resume', sessionId);
-  if (fs.existsSync(HOOK_SETTINGS)) args.push('--settings', HOOK_SETTINGS);   // 叠加状态钩子(不污染用户配置);文件没写成则不加，绝不因此起不来
+  // 引擎:codex 需真装了才走 codex，否则回退 claude
+  const eng = (engine === 'codex' && CODEX) ? 'codex' : 'claude';
+  const BIN = eng === 'codex' ? CODEX : CLAUDE;
+  const winCmd = eng === 'codex' ? 'codex' : 'claude';
+  let args;
+  if (eng === 'codex') {
+    args = [];
+    if (sessionId) args.push('resume', sessionId);   // codex 恢复是子命令，须在放权/hook 参数之前
+    args.push(...CODEX_EXTRA, ...codexHookArgs(key));
+  } else {
+    args = [...EXTRA];
+    if (sessionId) args.push('--resume', sessionId);
+    if (fs.existsSync(HOOK_SETTINGS)) args.push('--settings', HOOK_SETTINGS);   // 叠加状态钩子(不污染用户配置)
+  }
   const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
   let proc;
   try {
     const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH, STEWARD_WIN: key, STEWARD_STATE_DIR: STATE_DIR } };
     if (process.platform === 'win32') {
-      // claude 是 .cmd shim，ConPTY/CreateProcess 不能直接跑 .cmd → 经 cmd.exe /c 启动(按 PATHEXT 解析 .cmd)
-      proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', ['/c', ['claude', ...args].join(' ')], opts);
+      // .cmd shim，ConPTY 不能直接跑 → 经 cmd.exe /c(按 PATHEXT 解析)
+      proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', ['/c', [winCmd, ...args].join(' ')], opts);
     } else {
-      // 经登录 shell exec：PATH/node/claude 的解析与你终端完全一致，避开 GUI 精简 PATH + nvm shebang(#!/usr/bin/env node) 导致的 posix_spawn 失败
+      // 经登录 shell exec：PATH/node 解析与你终端一致，避开 GUI 精简 PATH + nvm shebang 的 posix_spawn 失败
       const sh = process.env.SHELL || '/bin/zsh';
-      proc = pty.spawn(sh, ['-lic', 'exec ' + [CLAUDE, ...args].map(shq).join(' ')], opts);
+      proc = pty.spawn(sh, ['-lic', 'exec ' + [BIN, ...args].map(shq).join(' ')], opts);
     }
   } catch (err) {
-    console.error('[pty] spawn 失败：', { CLAUDE, shell: process.env.SHELL, platform: process.platform, msg: err && err.message, stack: err && err.stack });
-    return { ok: false, error: 'claude 启动失败：' + (err && err.message) };
+    console.error('[pty] spawn 失败：', { eng, BIN, shell: process.env.SHELL, platform: process.platform, msg: err && err.message });
+    return { ok: false, error: eng + ' 启动失败：' + (err && err.message) };
   }
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
-  const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd, sessionId: sessionId || '' };
+  const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd, sessionId: sessionId || '', engine: eng };
   ptys.set(key, rec);
   try { fs.writeFileSync(path.join(STATE_DIR, key + '.json'), JSON.stringify({ state: 'init', ts: Date.now() })); } catch {}   // 初始 init(非 idle):区分"钩子还没触发"(走屏幕兜底) vs "钩子说空闲"(信钩子)
   const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
   proc.onData(d => { rec.lastDataAt = Date.now(); if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });   // 原始数据流时刻:claude 一输出就更新,最可靠的"在干活"信号(不依赖屏幕解析)
-  proc.onExit(() => { ptys.delete(key); try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} sendWin('pty-exit', { key }); });
-  return { ok: true };
+  proc.onExit(() => { ptys.delete(key); try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} try { fs.rmSync(path.join(STATE_DIR, 'codex-' + key), { recursive: true, force: true }); } catch {} sendWin('pty-exit', { key }); });
+  return { ok: true, engine: eng };   // 返回实际用的引擎(codex 没装会回退 claude)，渲染端据此打对徽章
 }
 
 // 周期性算忙/闲/确认（渲染端轮询取）
@@ -266,7 +301,7 @@ ipcMain.handle('code-update-apply', async () => {
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 });
 ipcMain.handle('app-relaunch', () => { app.relaunch(); app.exit(0); });
-ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, done: !!r.done, doneAt: r.doneAt || 0, title: r.title || '', activity: r.activity || '', sessionId: r.sessionId || '' })));
+ipcMain.handle('pty-states', () => [...ptys.entries()].map(([key, r]) => ({ key, projectId: r.projectId, busy: !!r.busy, confirm: !!r.confirm, done: !!r.done, doneAt: r.doneAt || 0, title: r.title || '', activity: r.activity || '', sessionId: r.sessionId || '', engine: r.engine || 'claude' })));
 
 // ---------- 3) 窗口 + 注入 native-term ----------
 function createWindow() {

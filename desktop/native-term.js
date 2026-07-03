@@ -55,20 +55,21 @@
     return terms[key];
   }
 
-  window.addWindowDom = function (key, _port, label) {
+  window.addWindowDom = function (key, _port, label, engine) {
     mount(key);
-    windows.push({ key, label }); renderTabs(); activate(windows.length - 1);
+    windows.push({ key, label, engine: engine || 'claude' }); renderTabs(); activate(windows.length - 1);
   };
-  window.newWindow = async function () {
+  window.newWindow = async function (engine) {
     if (!PROJECT) { toast('请先「新增项目」'); return; }
+    if (engine === 'codex' && window.__codexAvailable === false) { toast('未检测到 codex（未安装或损坏）'); return; }
     const p = PROJECTS.find(x => x.id === PROJECT) || {};
     const key = mkKey();
-    const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId: '' });
+    const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId: '', engine: engine || 'claude' });
     if (!r || !r.ok) { toast((r && r.error) || '终端启动失败'); return; }
-    addWindowDom(key, 0, '新对话 ' + (windows.length + 1));
+    addWindowDom(key, 0, '新对话 ' + (windows.length + 1), r.engine || engine || 'claude');
   };
   const _opening = new Set();   // 正在开的 sessionId，防并发把同一会话开两次
-  window.openSession = async function (sessionId, label) {
+  window.openSession = async function (sessionId, label, engine) {
     const hp = document.getElementById('hist-pop'); if (hp) hp.classList.remove('on');
     if (sessionId) {
       const ex = windows.findIndex(w => w.sessionId === sessionId);
@@ -79,9 +80,9 @@
     try {
       const p = PROJECTS.find(x => x.id === PROJECT) || {};
       const key = mkKey();
-      const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId });
+      const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId, engine: engine || 'claude' });
       if (!r || !r.ok) { toast((r && r.error) || '终端启动失败'); return; }
-      addWindowDom(key, 0, label || '历史对话');
+      addWindowDom(key, 0, label || '历史对话', r.engine || engine || 'claude');
       if (windows.length) windows[windows.length - 1].sessionId = sessionId;   // 记录会话 id，供去重
     } finally { if (sessionId) _opening.delete(sessionId); }
   };
