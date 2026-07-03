@@ -46,6 +46,76 @@ function findClaude() {
   return 'claude';
 }
 const CLAUDE_BIN = findClaude();
+// codex CLI：定位 + 真身可执行校验。codex 的真身是平台子包里的 vendor 二进制，npm 装坏时 `which codex`
+// 有软链但一跑就 ENOENT（本机踩过）→ 必须真跑 `codex --version` 确认能执行，不能只看 which。
+function findCodex() {
+  const cands = [];
+  if (process.env.CODEX_BIN) cands.push(process.env.CODEX_BIN);
+  try { const s = (spawnSync('which', ['codex']).stdout || '').toString().trim().split('\n')[0]; if (s) cands.push(s); } catch {}
+  for (const c of ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', path.join(os.homedir(), '.nvm/versions/node')]) cands.push(c);
+  for (const c of cands) { if (c && fs.existsSync(c)) { try { const r = spawnSync(c, ['--version'], { encoding: 'utf8', timeout: 8000 }); if (r.status === 0 && /codex/i.test(r.stdout || '')) return c; } catch {} } }
+  return '';   // 空 = 未装或装坏（前端据此灰掉 codex 入口）
+}
+const CODEX_BIN = findCodex();
+// —— 引擎注册表（引擎无关：新增引擎只加一条，不动交互框架）——
+// 每窗口一个引擎；命令拼装、resume 语法、hooks 挂法、状态检测方式全按这里派生。
+// bin：可执行；extra：放开权限的固定参数；resumeArgs(id)：恢复某会话的参数（claude=flag，codex=子命令）。
+// statusMode：'scrape'=抓 tmux 屏幕判状态（claude 现状，保留）；'hooks'=事件驱动读状态文件（codex）。
+const WSTATE_DIR = path.join(os.tmpdir(), 'steward-cli-state');
+try { fs.mkdirSync(WSTATE_DIR, { recursive: true }); } catch {}
+const CODEX_EXTRA = (process.env.CODEX_EXTRA || '--dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust').split(' ').filter(Boolean);
+const ENGINES = {
+  claude: {
+    id: 'claude', label: 'Claude', bin: CLAUDE_BIN, available: () => true,
+    baseArgs: () => [CLAUDE_BIN, ...CLAUDE_EXTRA],
+    resumeArgs: (id) => ['--resume', id],
+    statusMode: 'scrape',
+  },
+  codex: {
+    id: 'codex', label: 'Codex', bin: CODEX_BIN, available: () => !!CODEX_BIN,
+    // codex 恢复是子命令 `codex resume <id>`，不是顶层 flag；放权参数追加其后
+    baseArgs: () => [CODEX_BIN, ...CODEX_EXTRA],
+    resumeArgs: (id) => { throw new Error('codex resume handled in buildEngineCmd'); },
+    statusMode: 'hooks',
+  },
+};
+function engineOf(id) { return ENGINES[id] || ENGINES.claude; }
+// 生成 codex 的 hooks -c 覆盖：把生命周期事件写到「按窗口 key 命名的状态文件」。
+// 关键实测结论：用 -c hooks.<Event>=[...] 内联覆盖生效，且**不隔离 CODEX_HOME、不往用户 repo 写文件**，
+// 会话/登录态/skills 全留在真实 ~/.codex。busy=UserPromptSubmit/PreToolUse/PostToolUse，attn=PermissionRequest，idle=SessionStart/Stop。
+// 踩坑：命令串里带引号会让 codex 的 TOML 解析退化成「整个值当字符串」而报错（invalid type: string, expected a sequence）。
+// 解法：给每个窗口在临时目录生成**无参数、无引号**的 busy/attn/idle 三个 wrapper 脚本，TOML 里用**单引号字面串**引其裸路径。
+function ensureCodexHookWrappers(port, stateFile) {
+  const dir = path.join(WSTATE_DIR, `w${port}`);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+  const mk = (st) => { const fp = path.join(dir, `${st}.sh`); try { fs.writeFileSync(fp, `#!/bin/bash\ncat >/dev/null 2>&1\nprintf '${st}' > ${JSON.stringify(stateFile)}\n`); fs.chmodSync(fp, 0o755); } catch {} return fp; };
+  return { busy: mk('busy'), attn: mk('attn'), idle: mk('idle'), dir };
+}
+function codexHookArgs(port, stateFile) {
+  const w = ensureCodexHookWrappers(port, stateFile);
+  const ev = (fp) => `[{hooks=[{type='command',command='${fp}'}]}]`;   // 单引号字面串：路径在临时目录，无引号/空格
+  return [
+    '-c', `hooks.SessionStart=${ev(w.idle)}`,
+    '-c', `hooks.UserPromptSubmit=${ev(w.busy)}`,
+    '-c', `hooks.PreToolUse=${ev(w.busy)}`,
+    '-c', `hooks.PostToolUse=${ev(w.busy)}`,
+    '-c', `hooks.PermissionRequest=${ev(w.attn)}`,
+    '-c', `hooks.Stop=${ev(w.idle)}`,
+  ];
+}
+// 组装某引擎某窗口的启动命令（含可选 resume + codex 状态 hooks）
+function buildEngineCmd(engineId, sessionId, stateFile, port) {
+  const eng = engineOf(engineId);
+  if (eng.id === 'codex') {
+    const a = [eng.bin];
+    if (sessionId) a.push('resume', sessionId);   // 子命令形式，须在放权/hook 参数之前
+    a.push(...CODEX_EXTRA, ...codexHookArgs(port, stateFile));
+    return a;
+  }
+  const a = eng.baseArgs();
+  if (sessionId) a.push(...eng.resumeArgs(sessionId));
+  return a;
+}
 // 等端口可连通再回调（最多 ~5s），避免 iframe 抢在 ttyd 起好前去连接
 function waitForPort(port, cb, tries = 50) {
   const sock = net.connect(port, '127.0.0.1');
@@ -98,35 +168,37 @@ if (TMUX_BIN) { try { fs.writeFileSync(TMUX_CONF, [
   'bind -T copy-mode-vi q send -X cancel',
   'set -g destroy-unattached off' // 无客户端时会话保留（刷新后还能 reattach）
 ].join('\n') + '\n'); } catch {} }
-// 按需开窗：每个对话窗口 = 一个独立 ttyd（各跑一段 claude），可同项目多开
-const openWindows = new Map(); // key -> { key, port, projectId, sessionId, label, proc, tmuxSess }
+// 按需开窗：每个对话窗口 = 一个独立 ttyd（各跑一段 CLI），可同项目多开
+const openWindows = new Map(); // key -> { key, port, projectId, sessionId, label, engine, stateFile, proc, tmuxSess }
 const WIN_STATE_FILE = path.join(os.tmpdir(), 'steward-windows.json'); // 持久化窗口元数据，供重启后 adopt
 function allocPort() { const used = new Set([...openWindows.values()].map(w => w.port)); let p = TTYD_BASE; while (used.has(p)) p++; return p; }
-function saveWindows() { try { fs.writeFileSync(WIN_STATE_FILE, JSON.stringify([...openWindows.values()].map(w => ({ port: w.port, projectId: w.projectId, label: w.label, sessionId: w.sessionId, tmuxSess: w.tmuxSess })))); } catch {} }
+function saveWindows() { try { fs.writeFileSync(WIN_STATE_FILE, JSON.stringify([...openWindows.values()].map(w => ({ port: w.port, projectId: w.projectId, label: w.label, sessionId: w.sessionId, engine: w.engine, stateFile: w.stateFile, tmuxSess: w.tmuxSess })))); } catch {} }
 function portBound(port) { try { return (((spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout) || '').includes('LISTEN')); } catch { return false; } }
-function openWindow(proj, sessionId, label) {
+function openWindow(proj, sessionId, label, engineId) {
   const port = allocPort();
-  const claudeArgs = [CLAUDE_BIN, ...CLAUDE_EXTRA];
-  if (sessionId) claudeArgs.push('--resume', sessionId);
-  // 有 tmux 就包一层：claude 跑在 tmux 会话里；new-session -A = 在则 attach（不重启 claude）、不在则建并跑。
-  // 刷新页面后 ttyd 重连 → 同名 -A attach → tmux 回放整屏，claude TUI 原样恢复。
-  let cmd = claudeArgs, tmuxSess = '';
+  const eng = engineOf(engineId);
+  const stateFile = eng.statusMode === 'hooks' ? path.join(WSTATE_DIR, `${port}.state`) : '';
+  if (stateFile) { try { fs.writeFileSync(stateFile, 'idle'); } catch {} }   // 起手先置空闲，hook 触发前不误报
+  const cliArgs = buildEngineCmd(eng.id, sessionId, stateFile, port);
+  // 有 tmux 就包一层：CLI 跑在 tmux 会话里；new-session -A = 在则 attach（不重启）、不在则建并跑。
+  // 刷新页面后 ttyd 重连 → 同名 -A attach → tmux 回放整屏，TUI 原样恢复。
+  let cmd = cliArgs, tmuxSess = '';
   if (TMUX_BIN) {
     tmuxSess = `steward-${port}`;
-    cmd = [TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', tmuxSess, ...claudeArgs];
+    cmd = [TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', tmuxSess, ...cliArgs];
   }
   const args = ['-W', '-i', '127.0.0.1', '-p', String(port), ...cmd];
   const proc = spawn(TTYD_BIN, args, { cwd: proj.path, stdio: 'ignore', env: childEnv(proj.id) });
   proc.on('error', e => console.error('[ttyd spawn]', e?.message || e));   // spawn 失败不可掀翻进程
   const key = String(port);
-  openWindows.set(key, { key, port, projectId: proj.id, sessionId: sessionId || '', label: label || '新对话', proc, tmuxSess });
+  openWindows.set(key, { key, port, projectId: proj.id, sessionId: sessionId || '', label: label || '新对话', engine: eng.id, stateFile, proc, tmuxSess });
   saveWindows();
-  return { key, port };
+  return { key, port, engine: eng.id };
 }
 // 关窗 = 用户主动关：杀 ttyd（有句柄直接 kill，adopt 来的无句柄按端口 pkill）+ kill tmux 会话（彻底结束 claude）
 function killMux(sess) { if (!sess || !TMUX_BIN) return; try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'kill-session', '-t', sess]); } catch {} }
 function killTtyd(w) { if (w.proc) { try { w.proc.kill(); } catch {} } else { try { spawnSync('pkill', ['-f', `ttyd -W -i 127.0.0.1 -p ${w.port} `]); } catch {} } }
-function closeWindow(key) { const w = openWindows.get(key); if (w) { killTtyd(w); killMux(w.tmuxSess); openWindows.delete(key); saveWindows(); } }
+function closeWindow(key) { const w = openWindows.get(key); if (w) { killTtyd(w); killMux(w.tmuxSess); if (w.stateFile) { try { fs.unlinkSync(w.stateFile); } catch {} try { fs.rmSync(path.join(WSTATE_DIR, `w${w.port}`), { recursive: true, force: true }); } catch {} } openWindows.delete(key); saveWindows(); } }
 // 进程退出：只存档，不杀 ttyd/tmux —— 让会话存活，下次启动 adopt 接回（重启不打断 claude）
 process.on('exit', () => saveWindows());
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
@@ -150,7 +222,7 @@ function adoptWindows() {
       const args = ['-W', '-i', '127.0.0.1', '-p', String(port), TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', sess];
       try { proc = spawn(TTYD_BIN, args, { cwd: (projById(projectId) || {}).path || ROOT, stdio: 'ignore', env: childEnv(projectId) }); proc.on('error', e => console.error('[ttyd adopt]', e?.message || e)); } catch {}
     } // else：ttyd 还在（被 SIGKILL 残留）→ 直接认领，浏览器 iframe 不断连，无缝
-    openWindows.set(String(port), { key: String(port), port, projectId, sessionId: m.sessionId || '', label: m.label || '恢复的对话', proc, tmuxSess: sess });
+    openWindows.set(String(port), { key: String(port), port, projectId, sessionId: m.sessionId || '', label: m.label || '恢复的对话', engine: m.engine || 'claude', stateFile: m.stateFile || '', proc, tmuxSess: sess });
   }
   saveWindows();
 }
@@ -208,7 +280,25 @@ function confirmFromPane(out) {
   const tail = out.split('\n').map(l => l.trim()).filter(Boolean).slice(-6).join('\n');
   return /\([yY]\/[nN]\)|\[[yY]\/[nN]\]|❯\s*\d+[.\)]|\bDo you want to (proceed|continue)|press \w+ to (confirm|continue)/i.test(tail);
 }
+// codex（statusMode='hooks'）：状态来自 hook 写的状态文件，不抓屏判忙闲（事件驱动、稳）。
+// 文件内容：busy / attn / idle。仍抓一次屏幕补 activity/title（纯展示，不影响状态灯）。
+async function pollCodexHooks(w) {
+  let st = 'idle';
+  try { st = (fs.readFileSync(w.stateFile, 'utf8') || '').trim() || 'idle'; } catch {}
+  const wasBusy = w.busy;
+  w.confirm = st === 'attn';
+  w.busy = st === 'busy';
+  if (wasBusy && !w.busy && !w.confirm) { w.done = true; w.doneAt = Date.now(); }
+  if (w.tmuxSess) {
+    try { const out = await capturePane(w.tmuxSess); if (out) { w.activity = activityFromPane(out); } } catch {}
+    if (!w.title) {
+      if (w.sessionId) { try { w.title = (codexSessionPreview(w.sessionId) || ''); } catch {} }
+      if (!w.title && w.tmuxSess) { try { w.title = titleFromPane(await capturePane(w.tmuxSess, true)); } catch {} }
+    }
+  }
+}
 async function pollOne(w) {
+  if (w.engine === 'codex' && w.stateFile) return void await pollCodexHooks(w);
   if (!w.tmuxSess) return;
   const out = await capturePane(w.tmuxSess);
   if (!out) return;                            // 本轮抓不到，保留旧状态
@@ -271,6 +361,54 @@ function listClaudeSessions(abs) {
   try { for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.jsonl')) continue; const fp = path.join(dir, f); const st = fs.statSync(fp); const id = f.replace(/\.jsonl$/, ''); out.push({ id, mtime: st.mtimeMs, preview: sessionPreview(fp), name: names[id] || '' }); } } catch {}
   return out.sort((a, b) => b.mtime - a.mtime);
 }
+// ---- codex 会话发现 ----
+// codex 会话按日期分层：~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl；首行 session_meta 带 cwd。
+// 预览用 ~/.codex/session_index.jsonl 的 thread_name（现成标题），缺失则回退读 rollout 首条用户消息。
+const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+function codexIndexNames() {   // {id: thread_name}
+  const m = {};
+  try { const raw = fs.readFileSync(path.join(CODEX_HOME, 'session_index.jsonl'), 'utf8'); for (const ln of raw.split('\n')) { if (!ln.trim()) continue; try { const j = JSON.parse(ln); if (j && j.id) m[j.id] = j.thread_name || ''; } catch {} } } catch {}
+  return m;
+}
+function codexRolloutFirstUser(fp) {   // 回退预览：读 rollout 里第一条 role=user 的文本
+  try {
+    const fd = fs.openSync(fp, 'r'); const buf = Buffer.alloc(400000); const n = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
+    for (const ln of buf.toString('utf8', 0, n).split('\n')) {
+      if (!ln.trim()) continue; let j; try { j = JSON.parse(ln); } catch { continue; }
+      const p = j && j.payload; if (p && p.type === 'message' && p.role === 'user' && Array.isArray(p.content)) {
+        const t = p.content.map(c => c && c.text || '').join(' ').trim();
+        if (t && !t.startsWith('<environment_context>') && !t.startsWith('<permissions')) return t.slice(0, 120);
+      }
+    }
+  } catch {}
+  return '';
+}
+let _codexIdx = null, _codexIdxAt = 0;
+function listCodexSessions(abs) {
+  const root = path.join(CODEX_HOME, 'sessions');
+  const names = readNames();
+  if (!_codexIdx || Date.now() - _codexIdxAt > 5000) { _codexIdx = codexIndexNames(); _codexIdxAt = Date.now(); }
+  const out = [];
+  // 递归 YYYY/MM/DD 找 rollout-*.jsonl；按 mtime 先排，只对最近 ~80 条解析 cwd/preview（避免全量烧 IO）
+  const files = [];
+  const walk = (d) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of ents) { const fp = path.join(d, e.name); if (e.isDirectory()) walk(fp); else if (e.name.startsWith('rollout-') && e.name.endsWith('.jsonl')) { try { files.push({ fp, mtime: fs.statSync(fp).mtimeMs }); } catch {} } } };
+  walk(root);
+  files.sort((a, b) => b.mtime - a.mtime);
+  for (const { fp, mtime } of files.slice(0, 80)) {
+    try {
+      const fd = fs.openSync(fp, 'r'); const buf = Buffer.alloc(65536); const n = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
+      const firstLine = buf.toString('utf8', 0, n).split('\n', 1)[0];
+      let meta; try { meta = JSON.parse(firstLine); } catch { continue; }
+      const p = meta && meta.payload; if (!p || meta.type !== 'session_meta') continue;
+      if (abs && p.cwd !== abs) continue;   // 只列该项目 cwd 的会话
+      const id = p.id; if (!id) continue;
+      const preview = _codexIdx[id] || codexRolloutFirstUser(fp) || '';
+      out.push({ id, mtime, preview, name: names[id] || '' });
+    } catch {}
+  }
+  return out;
+}
+function codexSessionPreview(id) { const m = codexIndexNames(); return m[id] || ''; }
 
 // ---- 新项目脚手架（复制团队文件，已存在不覆盖）----
 function copyIfAbsent(src, dst) { try { if (fs.existsSync(src) && !fs.existsSync(dst)) { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.copyFileSync(src, dst); } } catch {} }
@@ -667,12 +805,12 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (url.pathname === '/api/health') {   // 上手就绪检查（#5）：工具就绪即时返回；?login=1 才探测 claude 登录
-    const health = { claude: { found: CLAUDE_BIN !== 'claude', bin: CLAUDE_BIN }, ttyd: !!TTYD_BIN, tmux: !!TMUX_BIN, node: process.version, projects: loadProjects().length };
+    const health = { claude: { found: CLAUDE_BIN !== 'claude', bin: CLAUDE_BIN }, codex: { found: !!CODEX_BIN, bin: CODEX_BIN }, engines: Object.values(ENGINES).filter(e => e.available()).map(e => e.id), ttyd: !!TTYD_BIN, tmux: !!TMUX_BIN, node: process.version, projects: loadProjects().length };
     if (url.searchParams.get('login') === '1') return void probeClaudeLogin(r => send(res, 200, JSON.stringify({ ...health, login: r })));
     return send(res, 200, JSON.stringify(health));
   }
   if (url.pathname === '/api/terminals') return send(res, 200, JSON.stringify({ ttyd: !!TTYD_BIN }));
-  if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
+  if (url.pathname === '/api/windows') { const pp = url.searchParams.get('project'); const ws = [...openWindows.values()].filter(w => w.projectId === pp).map(w => ({ key: w.key, port: w.port, label: w.label, title: w.title || '', sessionId: w.sessionId, engine: w.engine || 'claude', busy: !!w.busy, confirm: !!w.confirm, done: !!w.done, activity: w.activity || '' })); return send(res, 200, JSON.stringify({ windows: ws })); }
   if (url.pathname === '/api/attn') {   // 跨项目状态：待确认/干活中/刚完成 → 驱动项目多状态角标 + 浏览器标题
     const byProject = {}, busyByProject = {}, doneByProject = {}; let total = 0; const now = Date.now();
     for (const w of openWindows.values()) {
@@ -718,14 +856,18 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/open-window' && req.method === 'POST') {
     if (!TTYD_BIN) return send(res, 400, JSON.stringify({ error: '未安装 ttyd' }));
-    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} const proj = projById(b.project); if (!proj) return send(res, 400, JSON.stringify({ error: '尚未纳管任何项目，请先「新增项目」' })); const r = openWindow(proj, (b.sessionId || '').trim(), b.label || '新对话'); waitForPort(r.port, () => send(res, 200, JSON.stringify(r))); });
+    let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} const proj = projById(b.project); if (!proj) return send(res, 400, JSON.stringify({ error: '尚未纳管任何项目，请先「新增项目」' })); let engineId = b.engine || proj.defaultEngine || 'claude'; if (!engineOf(engineId).available()) { if (engineId === 'codex') return send(res, 400, JSON.stringify({ error: '未检测到可用的 codex（未安装或安装损坏），请先修复 codex 再开 codex 窗口' })); engineId = 'claude'; } const r = openWindow(proj, (b.sessionId || '').trim(), b.label || '新对话', engineId); waitForPort(r.port, () => send(res, 200, JSON.stringify(r))); });
     return;
   }
   if (url.pathname === '/api/close-window' && req.method === 'POST') {
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} closeWindow(String(b.key || '')); send(res, 200, JSON.stringify({ ok: true })); });
     return;
   }
-  if (url.pathname === '/api/claude-sessions') { const abs = url.searchParams.get('path') || ''; return send(res, 200, JSON.stringify({ sessions: abs ? listClaudeSessions(abs) : [] })); }
+  if (url.pathname === '/api/claude-sessions') {   // 分引擎历史：engine=codex 读 ~/.codex，否则读 ~/.claude
+    const abs = url.searchParams.get('path') || ''; const engine = url.searchParams.get('engine') || 'claude';
+    const sessions = !abs ? [] : (engine === 'codex' ? listCodexSessions(abs) : listClaudeSessions(abs));
+    return send(res, 200, JSON.stringify({ sessions, engine, codexAvailable: !!CODEX_BIN }));
+  }
   if (url.pathname === '/api/session-names') { return send(res, 200, JSON.stringify({ names: readNames() })); }   // {sessionId: 自定义名}
   if (url.pathname === '/api/session-name' && req.method === 'POST') { let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} writeName(b.sessionId, b.name); send(res, 200, JSON.stringify({ ok: true })); }); return; }
   if (url.pathname === '/api/commands') {   // 该项目可用的斜杠命令（读 .claude/commands/*.md 的名字+description）
@@ -738,11 +880,20 @@ const server = http.createServer((req, res) => {
     let buf = '';
     req.on('data', c => (buf += c));
     req.on('end', () => {
-      let abs = '', id = ''; try { const b = JSON.parse(buf); abs = b.path || ''; id = b.id || ''; } catch {}
-      if (!abs || !/^[A-Za-z0-9_-]+$/.test(id)) return send(res, 400, JSON.stringify({ ok: false, error: 'bad path/id' }));
-      const dir = path.join(os.homedir(), '.claude', 'projects', encodeCwd(abs));
-      const fp = path.join(dir, id + '.jsonl');
-      if (!fp.startsWith(dir + path.sep) || !fs.existsSync(fp)) return send(res, 404, JSON.stringify({ ok: false, error: 'not found' }));
+      let abs = '', id = '', engine = 'claude'; try { const b = JSON.parse(buf); abs = b.path || ''; id = b.id || ''; engine = b.engine || 'claude'; } catch {}
+      if (!abs || !/^[A-Za-z0-9._-]+$/.test(id)) return send(res, 400, JSON.stringify({ ok: false, error: 'bad path/id' }));
+      let fp = '';
+      if (engine === 'codex') {
+        // codex 会话不在扁平目录：按 id（uuid）在 ~/.codex/sessions/** 里找 rollout-*-<id>.jsonl
+        const root = path.join(CODEX_HOME, 'sessions');
+        const find = (d) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return ''; } for (const e of ents) { const p = path.join(d, e.name); if (e.isDirectory()) { const r = find(p); if (r) return r; } else if (e.name.startsWith('rollout-') && e.name.endsWith(id + '.jsonl')) return p; } return ''; };
+        fp = find(root);
+        if (!fp || !fp.startsWith(root + path.sep) || !fs.existsSync(fp)) return send(res, 404, JSON.stringify({ ok: false, error: 'not found' }));
+      } else {
+        const dir = path.join(os.homedir(), '.claude', 'projects', encodeCwd(abs));
+        fp = path.join(dir, id + '.jsonl');
+        if (!fp.startsWith(dir + path.sep) || !fs.existsSync(fp)) return send(res, 404, JSON.stringify({ ok: false, error: 'not found' }));
+      }
       try { fs.unlinkSync(fp); return send(res, 200, JSON.stringify({ ok: true })); }
       catch (e) { return send(res, 500, JSON.stringify({ ok: false, error: String(e.message || e) })); }
     });
