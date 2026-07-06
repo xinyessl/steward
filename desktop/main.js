@@ -109,7 +109,9 @@ function findCodex() {
   const exes = process.platform === 'win32' ? ['codex.cmd', 'codex.exe', 'codex'] : ['codex'];
   for (const dir of (SHELL_PATH || '').split(path.delimiter)) if (dir) for (const e of exes) cands.push(path.join(dir, e));
   for (const c of ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', path.join(os.homedir(), '.local/bin/codex')]) cands.push(c);
-  for (const c of cands) { try { if (c && fs.existsSync(c)) { const r = spawnSync(c, ['--version'], { encoding: 'utf8', timeout: 8000 }); if (r.status === 0 && /codex/i.test(r.stdout || '')) return c; } } catch {} }
+  // 关键:必须带 SHELL_PATH 跑 —— codex 是 #!/usr/bin/env node 脚本，Electron 主进程精简 PATH 里没 node，直接跑会 "env: node: No such file"→误判未装
+  const venv = { ...process.env, PATH: SHELL_PATH || process.env.PATH };
+  for (const c of cands) { try { if (c && fs.existsSync(c)) { const r = spawnSync(c, ['--version'], { encoding: 'utf8', timeout: 8000, env: venv }); if (r.status === 0 && /codex/i.test(r.stdout || '')) return c; } } catch {} }
   return '';   // 空 = 未装/装坏（前端据此灰掉 codex 入口）
 }
 const CODEX = findCodex();
