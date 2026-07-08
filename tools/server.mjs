@@ -78,6 +78,13 @@ const ENGINES = {
     resumeArgs: (id) => { throw new Error('codex resume handled in buildEngineCmd'); },
     statusMode: 'hooks',
   },
+  // 普通命令行终端：不是 agent，跑用户登录 shell，让人在项目目录里自己敲命令。无状态灯、不抓屏、无 resume。
+  cmd: {
+    id: 'cmd', label: '命令行', bin: process.env.SHELL || '/bin/bash', available: () => true,
+    baseArgs: () => [process.env.SHELL || '/bin/bash', '-l'],   // 登录 shell：加载用户 PATH/别名
+    resumeArgs: () => [],
+    statusMode: 'none',
+  },
 };
 function engineOf(id) { return ENGINES[id] || ENGINES.claude; }
 // 生成 codex 的 hooks -c 覆盖：把生命周期事件写到「按窗口 key 命名的状态文件」。
@@ -298,6 +305,7 @@ async function pollCodexHooks(w) {
   }
 }
 async function pollOne(w) {
+  if (engineOf(w.engine).statusMode === 'none') return;   // 命令行终端等非 agent 窗口：不检测状态
   if (w.engine === 'codex' && w.stateFile) return void await pollCodexHooks(w);
   if (!w.tmuxSess) return;
   const out = await capturePane(w.tmuxSess);

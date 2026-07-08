@@ -120,9 +120,13 @@ body.resizing #term-host iframe{pointer-events:none}
 .eng-badge.eng-codex{background:#E3F2E9;color:#1F8A4C}
 :root[data-theme="dark"] .eng-badge.eng-claude{background:#2C2440;color:#C4ABF0}
 :root[data-theme="dark"] .eng-badge.eng-codex{background:#18321F;color:#7FD9A0}
+.eng-badge.eng-cmd{background:#EEF1F5;color:#5A6573;font-family:var(--fe)}
+:root[data-theme="dark"] .eng-badge.eng-cmd{background:#2A2F37;color:#AEB7C2}
 /* 开窗按钮引擎色 + 禁用态 */
-.term-h .rl.eng-codex{color:#1F8A4C}.term-h .rl.eng-claude{color:#6A4BB0}
+.term-h .rl.eng-codex{color:#1F8A4C}.term-h .rl.eng-claude{color:#6A4BB0}.term-h .rl.eng-cmd{color:#5A6573}
 .term-h .rl.dis{opacity:.4;cursor:not-allowed;pointer-events:none}
+/* 终端浏览器全屏：右侧面板占满屏幕 */
+.right:fullscreen{width:100vw;height:100vh;border-left:0}
 /* 历史浮层引擎切换 tab */
 .hetabs{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--c-bd);position:sticky;top:0;background:var(--c-card);z-index:1}
 .hetab{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:6px;cursor:pointer;color:var(--c-t2);border:1px solid var(--c-bd)}
@@ -414,9 +418,11 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
   <div class="right">
     <div class="term-h">
       <span class="rl" id="t-focus" onclick="toggleFocus()" title="折叠左侧看板，终端全宽（专注）"><i class="ti ti-layout-sidebar-left-collapse"></i> <span id="t-focus-tx">专注</span></span>
+      <span class="rl" id="t-full" onclick="toggleFullscreen()" title="终端全屏（浏览器全屏铺满整个屏幕，Esc 退出）"><i class="ti ti-maximize"></i> <span id="t-full-tx">全屏</span></span>
       <span class="rl" id="t-cmd" onclick="toggleCmds()"><i class="ti ti-command"></i> 命令</span>
       <span class="rl eng-claude" id="t-new" onclick="newWindow('claude')" title="用 Claude 起一段新对话"><i class="ti ti-plus"></i> Claude</span>
       <span class="rl eng-codex" id="t-new-codex" onclick="newWindow('codex')" title="用 Codex 起一段新对话"><i class="ti ti-plus"></i> Codex</span>
+      <span class="rl eng-cmd" id="t-new-cmd" onclick="newWindow('cmd')" title="打开一个命令行终端（定位到当前项目目录，自己敲命令）"><i class="ti ti-terminal-2"></i> 命令行</span>
       <span class="rl" id="t-hist" onclick="toggleHistory()"><i class="ti ti-history"></i> 历史对话</span>
       <span class="rl" id="t-copy" onclick="copyTermScreen(event)" title="复制当前终端屏幕文本到剪贴板（Shift+点=连滚动历史一起复制）"><i class="ti ti-copy"></i> 复制</span>
       <span class="rl" id="t-diag" onclick="doDiag()" title="状态诊断:把当前窗口抓到的屏幕+忙/闲判定复制到剪贴板，发给开发定位闪烁"><i class="ti ti-stethoscope"></i> 诊断</span>
@@ -941,9 +947,10 @@ async function newWindow(engine){
   if(!ttydReady)return;
   if(!PROJECT){ toast('请先「新增项目」'); return; }
   if(engine==='codex' && !codexAvailable){ toast('未检测到 codex（未安装或损坏）'); return; }
-  const r=await (await fetch('/api/open-window',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:PROJECT,label:'新对话',engine:engine||'claude'})})).json();
+  const isCmd=engine==='cmd', base=isCmd?'命令行':'新对话';
+  const r=await (await fetch('/api/open-window',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:PROJECT,label:base,engine:engine||'claude'})})).json();
   if(r.error){ alert(r.error); return; }
-  addWindowDom(r.key,r.port,'新对话 '+(windows.length+1),r.engine||engine||'claude');
+  addWindowDom(r.key,r.port,base+' '+(windows.length+1),r.engine||engine||'claude');
 }
 async function openSession(sessionId,label,engine){
   document.getElementById('hist-pop').classList.remove('on');
@@ -969,10 +976,13 @@ function renderTabs(){
     const lab = w.userLabel || (w.sessionId && sessionNames[w.sessionId]) || ((st.title&&st.title.trim()) ? st.title : w.label);   // 用户命名(内存) > 该会话持久化的自定义名 > 会话话题 > 默认名
     const act = (st.activity&&st.activity.trim())? st.activity : '';
     const attn = s==='attn';   // ③ 待确认：真的停下在等你确认/选择（confirm 检测），空闲不显示
-    const eng = w.engine||'claude';   // 引擎徽章：一眼看出这窗口是 Claude 还是 Codex
-    const engBadge = `<span class="eng-badge eng-${eng}" title="引擎：${eng==='codex'?'Codex':'Claude'}">${eng==='codex'?'Cx':'Cl'}</span>`;
-    const tip=('引擎：'+(eng==='codex'?'Codex':'Claude')+'\n话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')+'\n(点 ✎ 或双击标题可重命名)').replace(/"/g,'');
-    return `<div class="ttab ${i===activeIdx?'on':''} ${s}" onclick="activate(${i})" title="${esc(tip)}"><span class="tdot ${s}"></span>${engBadge}<span class="tl" ondblclick="renameTab(event,${i})">${esc(lab)}</span>${attn?'<span class="tbadge">待确认</span>':''}<span class="rn" onclick="renameTabBtn(event,${i})" title="重命名此窗口"><i class="ti ti-pencil"></i></span><span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
+    const eng = w.engine||'claude';   // 引擎徽章：一眼看出这窗口是 Claude / Codex / 命令行
+    const isCmd = eng==='cmd';
+    const engName = eng==='codex'?'Codex':(isCmd?'命令行':'Claude');
+    const engBadge = `<span class="eng-badge eng-${eng}" title="${isCmd?'命令行终端':('引擎：'+engName)}">${eng==='codex'?'Cx':(isCmd?'$':'Cl')}</span>`;
+    const dot = isCmd ? '' : `<span class="tdot ${s}"></span>`;   // 普通终端非 agent，不显状态灯
+    const tip=((isCmd ? ('命令行终端\n'+lab) : ('引擎：'+engName+'\n话题：'+lab+'\n状态：'+stt+(act?('\n在干：'+act):'')))+'\n(点 ✎ 或双击标题可重命名)').replace(/"/g,'');
+    return `<div class="ttab ${i===activeIdx?'on':''} ${isCmd?'':s}" onclick="activate(${i})" title="${esc(tip)}">${dot}${engBadge}<span class="tl" ondblclick="renameTab(event,${i})">${esc(lab)}</span>${attn?'<span class="tbadge">待确认</span>':''}<span class="rn" onclick="renameTabBtn(event,${i})" title="重命名此窗口"><i class="ti ti-pencil"></i></span><span class="x" onclick="event.stopPropagation();closeWin(${i})"><i class="ti ti-x"></i></span></div>`;
   }).join('');
   renderTeam();   // 开发状态与窗口标签同源，随之刷新
 }
@@ -1177,6 +1187,17 @@ function applyFocus(){
   setTimeout(()=>window.dispatchEvent(new Event('resize')),80);   // 触发终端(xterm/ttyd)按新宽度重排
 }
 function toggleFocus(){ focusMode=!focusMode; try{localStorage.setItem('focusMode',focusMode?'1':'0');}catch{} applyFocus(); }
+// 终端浏览器全屏：把右侧终端面板 requestFullscreen 铺满整个屏幕（Esc 退出）。与「专注」(收左栏)互补。
+function toggleFullscreen(){
+  const el=document.querySelector('.right'); if(!el)return;
+  if(!document.fullscreenElement){ const p=el.requestFullscreen&&el.requestFullscreen(); if(p&&p.catch)p.catch(()=>toast('浏览器不允许全屏')); else if(!el.requestFullscreen)toast('浏览器不支持全屏'); }
+  else{ document.exitFullscreen&&document.exitFullscreen(); }
+}
+document.addEventListener('fullscreenchange',()=>{   // 图标/文案随全屏态切换（含用户按 Esc 退出）
+  const on=!!document.fullscreenElement;
+  const ic=document.querySelector('#t-full i'); if(ic)ic.className='ti '+(on?'ti-minimize':'ti-maximize');
+  const tx=document.getElementById('t-full-tx'); if(tx)tx.textContent=on?'退出全屏':'全屏';
+});
 let attnByProject={}, busyByProject={}, doneByProject={};   // {项目id:数量} 待确认/干活中/刚完成——驱动顶部项目多状态角标
 function projDot(pid){   // 优先级:待确认(红) > 干活中(绿·呼吸) > 刚完成(蓝)
   if(attnByProject[pid]) return {cls:'attn',tip:'有窗口在等你确认'};

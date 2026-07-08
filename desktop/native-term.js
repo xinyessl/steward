@@ -13,7 +13,7 @@
   const mkKey = () => 'n' + Date.now().toString(36) + (seq++);
 
   window.stewardPty.onData(({ key, data }) => { const t = terms[key]; if (t) t.term.write(data); });
-  window.stewardPty.onExit(({ key }) => { const t = terms[key]; if (t) t.term.write('\r\n\x1b[2m[claude 进程已退出]\x1b[0m\r\n'); });
+  window.stewardPty.onExit(({ key }) => { const t = terms[key]; if (t) t.term.write('\r\n\x1b[2m[进程已退出]\x1b[0m\r\n'); });
 
   function mount(key) {
     const el = document.createElement('div'); el.className = 'nterm'; el.dataset.key = key;
@@ -66,7 +66,8 @@
     const key = mkKey();
     const r = await window.stewardPty.create({ key, projectId: PROJECT, cwd: p.path, sessionId: '', engine: engine || 'claude' });
     if (!r || !r.ok) { toast((r && r.error) || '终端启动失败'); return; }
-    addWindowDom(key, 0, '新对话 ' + (windows.length + 1), r.engine || engine || 'claude');
+    const base = engine === 'cmd' ? '命令行' : '新对话';
+    addWindowDom(key, 0, base + ' ' + (windows.length + 1), r.engine || engine || 'claude');
   };
   const _opening = new Set();   // 正在开的 sessionId，防并发把同一会话开两次
   window.openSession = async function (sessionId, label, engine) {
