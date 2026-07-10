@@ -1058,7 +1058,7 @@ async function toggleHistory(force){
   document.getElementById('cmd-pop')&&document.getElementById('cmd-pop').classList.remove('on');
   if(!force && pop.classList.contains('on')){ pop.classList.remove('on'); return; }
   pop.classList.add('on');
-  const tabs=`<div class="hetabs"><span class="hetab eng-claude ${histEngine==='claude'?'on':''}" onclick="switchHistEngine('claude')">Claude 历史</span><span class="hetab eng-codex ${histEngine==='codex'?'on':''} ${codexAvailable?'':'dis'}" onclick="${codexAvailable?"switchHistEngine('codex')":''}" title="${codexAvailable?'':'未检测到 codex'}">Codex 历史</span></div>`;
+  const tabs=`<div class="hetabs"><span class="hetab eng-claude ${histEngine==='claude'?'on':''}" onclick="switchHistEngine(event,'claude')">Claude 历史</span><span class="hetab eng-codex ${histEngine==='codex'?'on':''} ${codexAvailable?'':'dis'}" onclick="${codexAvailable?"switchHistEngine(event,'codex')":''}" title="${codexAvailable?'':'未检测到 codex'}">Codex 历史</span></div>`;
   pop.innerHTML=tabs+'<div class="sst" style="padding:10px">加载中…</div>';
   try{
     const r=await (await fetch('/api/claude-sessions?engine='+histEngine+'&path='+encodeURIComponent(projPath(PROJECT)))).json();
@@ -1066,7 +1066,7 @@ async function toggleHistory(force){
     pop.innerHTML=tabs+(ss.length?ss.map(s=>{const nm=s.name||''; const lb=(nm||s.preview||'对话').slice(0,20); const sub=(nm?(esc((s.preview||'').slice(0,22))+' · '):'')+esc(new Date(s.mtime).toLocaleString())+' · '+esc(String(s.id).slice(0,8)); return `<div class="hrow" onclick="openSession('${jss(s.id)}','${jss(lb)}','${he}')"><div class="hp1">${nm?('<i class="ti ti-pencil"></i> '+esc(nm)):esc(s.preview||'(无预览)')}</div><div class="hp2">${sub}</div><button class="hdel" title="删除这段历史对话" onclick="event.stopPropagation();delSession('${jss(s.id)}','${he}')"><i class="ti ti-trash"></i></button></div>`;}).join(''):'<div class="sst" style="padding:10px">暂无历史对话</div>');
   }catch(e){ pop.innerHTML=tabs+'<div class="sst" style="padding:10px">读取失败</div>'; }
 }
-function switchHistEngine(e){ histEngine=e; toggleHistory(true); }
+function switchHistEngine(ev,e){ if(ev&&ev.stopPropagation)ev.stopPropagation(); histEngine=e; toggleHistory(true); }   // 阻止冒泡到全局"点外部关浮层"——否则重建 innerHTML 后 e.target 脱离 DOM，closest 判成外部误关
 function delSession(id,engine){
   uiConfirm('删除后不可恢复。',async()=>{
     try{ await fetch('/api/claude-session-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:projPath(PROJECT),id,engine:engine||'claude'})}); }catch(e){}
