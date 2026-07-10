@@ -258,16 +258,26 @@ setInterval(() => {
     // 屏幕回退信号(仅当钩子未生效时用):不含 ✻ —— claude 用 ✻ 作"已完成消息"的项目符号(如 ✻ Worked for 3m 33s)，会误命中→卡 busy(诊断确认)
     const working = /esc to interrupt|[↑↓]\s*[\d.,]+\s*k?\s*tokens?|Waiting for \d+ background/.test(tail);
     r.confirm = isConfirm(screen) || (hookState && hookState.state === 'waiting');
-    if (hookState && (hookState.state === 'doing' || hookState.state === 'idle')) {
-      // 钩子已生效(有真状态 doing/idle)→ 完全信它，绝不再叠屏幕(否则 ✻/残留文字会误判)。事件驱动、无时间窗 → 不闪且准
-      r.busy = !r.confirm && hookState.state === 'doing';
+    const hs = hookState && hookState.state;
+    if (hs === 'doing') {
+      // 钩子说在干活 → 干活；清 idle 计时、记"干过活"(供完成判定)
+      r.busy = !r.confirm; r.idleAt = 0; r.sawDoing = true;
+    } else if (hs === 'idle') {
+      // 迟滞:钩子翻 idle 不立刻落空闲——长会话/后台代理编排会在回合间隙瞬时 idle，直接信它灯就来回闪
+      // (诊断佐证:hook=doing 时判定正确，闪的是这些 idle 空档)。三个"还没完"信号任一成立就先保持在干活：
+      //   ① 屏幕还有活/在等后台(working)  ② 原始数据仍在流(<1.5s)  ③ idle 稳定不足 3s
+      // 三者都不满足 → 才真落空闲。均为"延长 busy"，且 working 用精准正则、streaming 会自然过期 → 不会卡死忙。
+      if (!r.idleAt) r.idleAt = now;
+      const streaming = r.lastDataAt && (now - r.lastDataAt) < 1500;
+      const settled = (now - r.idleAt) >= 3000;
+      r.busy = !r.confirm && (working || streaming || !settled);
     } else {
       // 钩子还没触发(pre-write=init)或无数据(老 claude)→ 屏幕启发式 + 6 秒时间窗兜底
       r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
+      r.idleAt = 0;
     }
-    // 完成 = 真回合结束(钩子 doing→idle)。开机欢迎屏/重绘引起的"屏幕兜底忙→闲"不算完成，避免刚开的窗口就误亮蓝灯/误弹完成通知
-    const hs = hookState && hookState.state;
-    if (r.lastHookState === 'doing' && hs === 'idle' && !r.confirm) { r.done = true; r.doneAt = now; notifyDone(r, key); }
+    // 完成 = 迟滞后真正落到空闲(且之前干过活)：只弹一次；编排间隙的瞬时 idle 不算完成，避免误弹
+    if (r.sawDoing && hs === 'idle' && !r.busy && !r.confirm) { r.done = true; r.doneAt = now; r.sawDoing = false; notifyDone(r, key); }
     r.lastHookState = hs;
     if (!wasConfirm && r.confirm) notifyConfirm(r, key);   // 刚进入"等确认"→ 通知
   }
