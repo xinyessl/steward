@@ -54,6 +54,11 @@ body.resizing #term-host iframe{pointer-events:none}
 .left.preview-on>.sec,.left.preview-on>.team,.left.preview-on>#v-board{display:none}
 .left.preview-on>#v-preview{display:flex}
 #preview-frame{flex:1;min-height:0;width:100%;border:1px solid var(--c-bd);border-radius:8px;background:#fff}
+#preview-cands{padding:2px 2px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#preview-cands .pc-lb{font-size:11.5px;color:var(--c-t3)}
+#preview-cands .pc-chip{font-size:11.5px;font-family:var(--fe);padding:2px 10px;border-radius:999px;background:var(--c-pri-l);color:var(--c-pri);border:1px solid var(--c-pri-b);cursor:pointer}
+#preview-cands .pc-chip:hover{background:var(--c-pri);color:#fff}
+#v-preview:fullscreen{width:100vw;height:100vh;background:var(--c-card);padding:12px}
 .wrap.focus{grid-template-columns:1fr}
 .wrap.focus .left,.wrap.focus .splitter{display:none}
 .right{border-left:1px solid var(--c-bd);background:var(--c-card);display:flex;flex-direction:column;min-height:0;position:relative}
@@ -403,11 +408,14 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
       <div class="sec"><i class="ti ti-brand-chrome"></i> 实时预览
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
           <input id="preview-url" placeholder="http://localhost:5173" onkeydown="if(event.key==='Enter')applyPreviewUrl()" style="width:200px;padding:4px 8px;font-size:12px">
+          <button class="mini-btn2" onclick="detectPreview(false)" title="自动识别本项目正在运行的本地 dev server（扫端口按进程目录归属）"><i class="ti ti-radar-2"></i> 识别</button>
           <button class="mini-btn2" onclick="applyPreviewUrl()" title="打开/刷新"><i class="ti ti-refresh"></i></button>
+          <button class="mini-btn2" id="pv-full" onclick="previewFullscreen()" title="预览全屏（浏览器铺满整个屏幕，Esc 退出）"><i class="ti ti-maximize"></i> 全屏</button>
           <button class="mini-btn2" onclick="togglePreview()" title="返回任务清单"><i class="ti ti-arrow-back-up"></i> 任务</button>
         </span>
       </div>
-      <div id="preview-hint" class="empty-cta" style="display:none">填本项目 dev server 地址（如 http://localhost:5173）→ 回车，左侧实时渲染运行效果。地址按项目记住。</div>
+      <div id="preview-cands" style="display:none"></div>
+      <div id="preview-hint" class="empty-cta" style="display:none">填本项目 dev server 地址（如 http://localhost:5173）→ 回车，左侧实时渲染运行效果。地址按项目记住。<br><span style="color:var(--c-t3)">本地已启动的会自动识别；<b>云端地址</b>手动填一次即按项目记住。</span></div>
       <iframe id="preview-frame" title="预览" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"></iframe>
     </div>
   </div>
@@ -424,7 +432,6 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
       <span class="rl eng-codex" id="t-new-codex" onclick="newWindow('codex')" title="用 Codex 起一段新对话"><i class="ti ti-plus"></i> Codex</span>
       <span class="rl eng-cmd" id="t-new-cmd" onclick="newWindow('cmd')" title="打开一个命令行终端（定位到当前项目目录，自己敲命令）"><i class="ti ti-terminal-2"></i> 命令行</span>
       <span class="rl" id="t-hist" onclick="toggleHistory()"><i class="ti ti-history"></i> 历史对话</span>
-      <span class="rl" id="t-copy" onclick="copyTermScreen(event)" title="复制当前终端屏幕文本到剪贴板（Shift+点=连滚动历史一起复制）"><i class="ti ti-copy"></i> 复制</span>
       <span class="rl" id="t-diag" onclick="doDiag()" title="状态诊断:把当前窗口抓到的屏幕+忙/闲判定复制到剪贴板，发给开发定位闪烁"><i class="ti ti-stethoscope"></i> 诊断</span>
     </div>
     <div class="hist-pop" id="cmd-pop"></div>
@@ -1082,8 +1089,26 @@ function previewKey(){ return 'preview-url:'+(PROJECT||''); }
 function togglePreview(){
   const left=document.querySelector('.left'); if(!left)return;
   const on=left.classList.toggle('preview-on');
-  if(on){ const inp=document.getElementById('preview-url'); inp.value=localStorage.getItem(previewKey())||''; applyPreviewUrl(); inp.focus(); }
+  if(on){ const inp=document.getElementById('preview-url'); const saved=localStorage.getItem(previewKey())||''; inp.value=saved;
+    if(saved){ applyPreviewUrl(); } else { detectPreview(true); }   // 有记住的用记住的(云端/上次)；没有就自动识别本地 dev server
+    inp.focus();
+  }
 }
+async function detectPreview(auto){   // 自动识别本项目正在运行的本地 dev server
+  if(!PROJECT){ if(!auto)toast('请先选择项目'); return; }
+  const inp=document.getElementById('preview-url'); let cands=[];
+  try{ const r=await (await fetch('/api/detect-preview?project='+encodeURIComponent(PROJECT))).json(); cands=r.candidates||[]; }catch(e){}
+  renderPreviewCands(cands);
+  if(!cands.length){ if(!auto) toast('没扫到本项目在跑的本地 dev server——没启动？或是云端地址，手动填一次会按项目记住'); return; }
+  if(!auto || !inp.value.trim()){ inp.value=cands[0].url; applyPreviewUrl(); }   // 手动点识别=直接用第一个；自动=仅当没地址时才填
+}
+function renderPreviewCands(cands){
+  const box=document.getElementById('preview-cands'); if(!box)return;
+  if(!cands||cands.length<2){ box.style.display='none'; box.innerHTML=''; return; }   // 只识别到一个就直接用了，不铺候选
+  box.style.display='';
+  box.innerHTML='<span class="pc-lb">识别到多个 dev server：</span>'+cands.map(c=>`<span class="pc-chip" onclick="pickPreviewCand('${c.url}')" title="${esc(c.cmd||'')}">localhost:${c.port}</span>`).join('');
+}
+function pickPreviewCand(u){ const inp=document.getElementById('preview-url'); if(inp){ inp.value=u; applyPreviewUrl(); } }
 function applyPreviewUrl(){
   const inp=document.getElementById('preview-url'); let u=(inp.value||'').trim();
   const fr=document.getElementById('preview-frame'), hint=document.getElementById('preview-hint');
@@ -1187,16 +1212,19 @@ function applyFocus(){
   setTimeout(()=>window.dispatchEvent(new Event('resize')),80);   // 触发终端(xterm/ttyd)按新宽度重排
 }
 function toggleFocus(){ focusMode=!focusMode; try{localStorage.setItem('focusMode',focusMode?'1':'0');}catch{} applyFocus(); }
-// 终端浏览器全屏：把右侧终端面板 requestFullscreen 铺满整个屏幕（Esc 退出）。与「专注」(收左栏)互补。
-function toggleFullscreen(){
-  const el=document.querySelector('.right'); if(!el)return;
-  if(!document.fullscreenElement){ const p=el.requestFullscreen&&el.requestFullscreen(); if(p&&p.catch)p.catch(()=>toast('浏览器不允许全屏')); else if(!el.requestFullscreen)toast('浏览器不支持全屏'); }
-  else{ document.exitFullscreen&&document.exitFullscreen(); }
+// 浏览器全屏：终端(右侧面板) / 预览(左侧预览视图) 各一个，铺满整个屏幕（Esc 退出）。与「专注」(收左栏)互补。
+function toggleFullscreen(){ fsToggle(document.querySelector('.right')); }
+function previewFullscreen(){ fsToggle(document.getElementById('v-preview')); }
+function fsToggle(el){
+  if(!el)return;
+  if(document.fullscreenElement===el){ document.exitFullscreen&&document.exitFullscreen(); }
+  else{ const p=el.requestFullscreen&&el.requestFullscreen(); if(p&&p.catch)p.catch(()=>toast('浏览器不允许全屏')); else if(!el.requestFullscreen)toast('浏览器不支持全屏'); }
 }
-document.addEventListener('fullscreenchange',()=>{   // 图标/文案随全屏态切换（含用户按 Esc 退出）
-  const on=!!document.fullscreenElement;
-  const ic=document.querySelector('#t-full i'); if(ic)ic.className='ti '+(on?'ti-minimize':'ti-maximize');
-  const tx=document.getElementById('t-full-tx'); if(tx)tx.textContent=on?'退出全屏':'全屏';
+document.addEventListener('fullscreenchange',()=>{   // 图标/文案随全屏态切换（含 Esc 退出）；按当前全屏的是哪个元素分别更新
+  const fe=document.fullscreenElement, term=document.querySelector('.right'), pv=document.getElementById('v-preview');
+  const ti=document.querySelector('#t-full i'); if(ti)ti.className='ti '+(fe===term?'ti-minimize':'ti-maximize');
+  const tx=document.getElementById('t-full-tx'); if(tx)tx.textContent=fe===term?'退出全屏':'全屏';
+  const pi=document.querySelector('#pv-full i'); if(pi)pi.className='ti '+(fe===pv?'ti-minimize':'ti-maximize');
 });
 let attnByProject={}, busyByProject={}, doneByProject={};   // {项目id:数量} 待确认/干活中/刚完成——驱动顶部项目多状态角标
 function projDot(pid){   // 优先级:待确认(红) > 干活中(绿·呼吸) > 刚完成(蓝)

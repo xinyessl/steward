@@ -862,6 +862,39 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/detect-preview') {   // 自动识别本项目「本地 dev server」:扫 LISTEN 端口 → 用进程 cwd 归属到本项目(系统服务 cwd 在 / 会被排除;steward 自身/ttyd 端口显式排除)
+    const proj = projById(url.searchParams.get('project'));
+    if (!proj || !proj.path) return send(res, 200, JSON.stringify({ candidates: [] }));
+    const base = path.resolve(proj.path);
+    const exclude = new Set([Number(PORT), ...[...openWindows.values()].map(w => w.port)]);
+    const runLsof = (args) => { try { return spawnSync('lsof', args, { encoding: 'utf8', timeout: 5000 }).stdout || ''; } catch { return ''; } };
+    const pidPorts = new Map(); let cur = '';   // ① 所有 LISTEN 端口 → pid→ports
+    for (const ln of runLsof(['-nP', '-iTCP', '-sTCP:LISTEN', '-Fpn']).split('\n')) {
+      if (ln[0] === 'p') { cur = ln.slice(1); if (!pidPorts.has(cur)) pidPorts.set(cur, new Set()); }
+      else if (ln[0] === 'n' && cur) { const m = /:(\d+)$/.exec(ln.slice(1)); if (m) pidPorts.get(cur).add(Number(m[1])); }
+    }
+    const pids = [...pidPorts.keys()];
+    if (!pids.length) return send(res, 200, JSON.stringify({ candidates: [] }));
+    const pidCwd = new Map(), pidCmd = new Map(); let cp = '';   // ② 这些 pid 的 cwd + 命令名
+    for (const ln of runLsof(['-a', '-p', pids.join(','), '-d', 'cwd', '-Fpcn']).split('\n')) {
+      if (ln[0] === 'p') cp = ln.slice(1);
+      else if (ln[0] === 'c' && cp) pidCmd.set(cp, ln.slice(1));
+      else if (ln[0] === 'n' && cp) pidCwd.set(cp, ln.slice(1));
+    }
+    const seen = new Set(), candidates = [];   // ③ cwd 在本项目目录内 且 端口非 steward 自身 → 候选
+    for (const pid of pids) {
+      const cwd = pidCwd.get(pid); if (!cwd) continue;
+      const rc = path.resolve(cwd);
+      if (rc !== base && !rc.startsWith(base + path.sep)) continue;
+      for (const port of pidPorts.get(pid)) {
+        if (exclude.has(port) || seen.has(port)) continue;
+        seen.add(port);
+        candidates.push({ url: `http://localhost:${port}`, port, cmd: pidCmd.get(pid) || '' });
+      }
+    }
+    candidates.sort((a, b) => a.port - b.port);
+    return send(res, 200, JSON.stringify({ candidates }));
+  }
   if (url.pathname === '/api/open-window' && req.method === 'POST') {
     if (!TTYD_BIN) return send(res, 400, JSON.stringify({ error: '未安装 ttyd' }));
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => { let b = {}; try { b = JSON.parse(buf); } catch {} const proj = projById(b.project); if (!proj) return send(res, 400, JSON.stringify({ error: '尚未纳管任何项目，请先「新增项目」' })); let engineId = b.engine || proj.defaultEngine || 'claude'; if (!engineOf(engineId).available()) { if (engineId === 'codex') return send(res, 400, JSON.stringify({ error: '未检测到可用的 codex（未安装或安装损坏），请先修复 codex 再开 codex 窗口' })); engineId = 'claude'; } const r = openWindow(proj, (b.sessionId || '').trim(), b.label || '新对话', engineId); waitForPort(r.port, () => send(res, 200, JSON.stringify(r))); });
