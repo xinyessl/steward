@@ -2,6 +2,7 @@
 id: <模块/功能编号，本项目统一前缀，如 MOD-01 / UC-01>
 title: <功能名>
 module: <子系统 / 应用名>
+type: feature              # feature=功能 spec；端到端跨模块流程用「流程 spec」(_TEMPLATE-流程.md，type: process)
 source: <来源：/scan 逆向 | 需求文档 §X | 人工>
 prd: <需求出处，如 docs/PRD.md §X；无则「无」>
 contract: <接口契约出处，如 docs/接口契约.md §X / OpenAPI；无则「无」>

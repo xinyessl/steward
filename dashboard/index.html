@@ -1271,7 +1271,7 @@ async function syncMethodology(){
   if(!confirm('把内置模板的命令(/intake /todo /tasks 等)覆盖刷新到本项目，并按模板更新 CLAUDE.md 方法论(保留本项目「①本项目信息」)。继续?'))return;
   try{
     const r=await (await fetch('/api/project-sync-methodology?project='+PROJECT,{method:'POST'})).json();
-    if(r.ok){ toast(`已同步：命令 ${r.cmds} 个、agent ${r.agents} 个${r.claudeMd?'、CLAUDE.md 已更新':'（CLAUDE.md 为自定义/无①段，未动）'}${r.agentsMd?'、AGENTS.md(Codex 入口)已更新':''}`); refreshAll(); }
+    if(r.ok){ toast(`已同步：命令 ${r.cmds} 个、agent ${r.agents} 个${r.claudeMd?'、CLAUDE.md 已更新':'（CLAUDE.md 为自定义/无①段，未动）'}${r.agentsMd?'、AGENTS.md(Codex 入口)已更新':''}${r.specTpl?`、spec 模板 ${r.specTpl} 个(含流程模板)`:''}`); refreshAll(); }
     else toast('同步失败：'+(r.error||'未知'));
   }catch(e){ toast('同步失败：'+(e.message||e)); }
 }

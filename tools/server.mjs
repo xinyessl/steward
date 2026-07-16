@@ -1012,8 +1012,10 @@ const server = http.createServer((req, res) => {
       let cur = null; try { cur = fs.readFileSync(dest, 'utf8'); } catch {}
       if (cur === null || cur.includes('<!-- steward:agents -->')) { fs.copyFileSync(src, dest); agentsMd = true; }
     } catch {}
+    let specTpl = 0;   // 刷新 spec 脚手架模板(_TEMPLATE*/README，含新的流程模板)——只动模板文件，绝不碰用户已有 spec
+    try { const sd = path.join(T, 'docs/specs'), dd = path.join(p.path, 'docs/specs'); fs.mkdirSync(dd, { recursive: true }); for (const f of fs.readdirSync(sd)) if (/^_TEMPLATE.*\.md$/.test(f) || f === 'README.md') { fs.copyFileSync(path.join(sd, f), path.join(dd, f)); specTpl++; } } catch {}
     genBoard(p.path);
-    return send(res, 200, JSON.stringify({ ok: true, cmds, agents, claudeMd, agentsMd }));
+    return send(res, 200, JSON.stringify({ ok: true, cmds, agents, claudeMd, agentsMd, specTpl }));
   }
   if (url.pathname === '/api/project-remove' && req.method === 'POST') {   // 移除项目 = 取消纳管 + 关该项目终端；不删磁盘文件
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
