@@ -233,6 +233,7 @@ body.resizing #term-host iframe{pointer-events:none}
 .task-st{font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;flex-shrink:0}
 .task-st.st-todo{background:var(--c-bg);color:var(--c-t3)}.task-st.st-doing{background:var(--c-pri-l);color:var(--c-pri)}.task-st.st-done{background:var(--c-ok-l);color:var(--c-ok)}
 .task-del{border:none;background:none;color:var(--c-t3);cursor:pointer;flex-shrink:0;display:none;padding:0}.task-row:hover .task-del{display:inline}.task-del:hover{color:var(--c-dg)}
+.task-go{border:none;background:none;color:var(--c-t3);cursor:pointer;flex-shrink:0;display:none;padding:0}.task-row:hover .task-go{display:inline}.task-go:hover{color:var(--c-pri)}
 .mini-btn2{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;border:1px solid var(--c-bds);background:var(--c-card);color:var(--c-t2);border-radius:6px;padding:3px 10px;cursor:pointer}
 .mini-btn2:hover{border-color:var(--c-pri);color:var(--c-pri)}
 .mini-btn2.danger:hover{border-color:var(--c-dg);color:var(--c-dg)}
@@ -1666,8 +1667,15 @@ function taskRow(bid,t){
     +`<span class="task-tt ${t.status==='done'?'done':''}" title="双击编辑" ondblclick="editTask(this,'${jss(bid)}','${jss(t.id)}')">${esc(t.title)}</span>`
     +sp
     +`<span class="task-st ${m[1]}">${m[0]}</span>`
+    +(t.status!=='done'?`<button class="task-go" onclick="dispatchTask('${jss(bid)}','${jss(t.id)}')" title="派给 AI 处理：把 /fix + 本条预填到当前项目终端（回车执行；若是新功能把 /fix 改成 /build）"><i class="ti ti-player-play"></i></button>`:'')
     +`<button class="task-del" onclick="delTask('${jss(bid)}','${jss(t.id)}')" title="删除"><i class="ti ti-x"></i></button>`
     +`</div>`;
+}
+function dispatchTask(bid,tid){   // 一键派活：预填 /fix <任务> 到当前项目终端（不自动回车，留你审/改成 /build）
+  const b=batches.find(x=>x.id===bid); if(!b)return; const t=(b.tasks||[]).find(x=>x.id===tid); if(!t)return;
+  const cmd='/fix '+String(t.title||'').replace(/\s+/g,' ').trim();
+  prefillTerm(cmd);
+  toast('已预填到终端，回车执行（新功能可把 /fix 改成 /build）');
 }
 function cycleTask(bid,tid){ const b=batches.find(x=>x.id===bid); if(!b)return; const t=(b.tasks||[]).find(x=>x.id===tid); if(!t)return; t.status=t.status==='todo'?'doing':t.status==='doing'?'done':'todo'; renderTasks(); saveBatches(); }
 function toggleBatch(id){ if(collapsedBatches.has(id))collapsedBatches.delete(id); else collapsedBatches.add(id); renderTasks(); }
