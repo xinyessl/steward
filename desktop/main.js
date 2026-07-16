@@ -263,14 +263,12 @@ setInterval(() => {
       // 钩子说在干活 → 干活；清 idle 计时、记"干过活"(供完成判定)
       r.busy = !r.confirm; r.idleAt = 0; r.sawDoing = true;
     } else if (hs === 'idle') {
-      // 迟滞:钩子翻 idle 不立刻落空闲——长会话/后台代理编排会在回合间隙瞬时 idle，直接信它灯就来回闪
-      // (诊断佐证:hook=doing 时判定正确，闪的是这些 idle 空档)。三个"还没完"信号任一成立就先保持在干活：
-      //   ① 屏幕还有活/在等后台(working)  ② 原始数据仍在流(<1.5s)  ③ idle 稳定不足 3s
-      // 三者都不满足 → 才真落空闲。均为"延长 busy"，且 working 用精准正则、streaming 会自然过期 → 不会卡死忙。
+      // 纯计时短迟滞:钩子翻 idle 后只按"时间"再 hold ~1.5s(吸收长会话/后台代理编排在回合间隙的瞬时 idle)，
+      // 到点即落空闲、并保持空闲。★关键:idle 分支绝不看屏幕(working)、也不看数据流(streaming)——
+      // claude 空闲窗口的宠物/状态栏/用量条会自走，屏幕一直变、pty 一直有数据，拿这俩当"还在忙"会把空闲误判成忙
+      // (报表没干活也亮/闪，就是 v0.2.41 在这里叠了 working/streaming 导致的回归)。空闲与否只信钩子。
       if (!r.idleAt) r.idleAt = now;
-      const streaming = r.lastDataAt && (now - r.lastDataAt) < 1500;
-      const settled = (now - r.idleAt) >= 3000;
-      r.busy = !r.confirm && (working || streaming || !settled);
+      r.busy = !r.confirm && (now - r.idleAt < 1500);
     } else {
       // 钩子还没触发(pre-write=init)或无数据(老 claude)→ 屏幕启发式 + 6 秒时间窗兜底
       r.busy = !r.confirm && (working || (r.lastChange && now - r.lastChange < 6000));
