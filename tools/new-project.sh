@@ -15,6 +15,7 @@ mkdir -p "$DEST/.claude/agents" "$DEST/.claude/commands" "$DEST/docs/specs" "$DE
 echo "▶ 复制脚手架模板（templates/，已存在的不覆盖）"
 TPL="$ROOT/templates"
 cp -n "$TPL/CLAUDE.md"                   "$DEST/CLAUDE.md"               2>/dev/null || true
+cp -n "$TPL/AGENTS.md"                   "$DEST/AGENTS.md"               2>/dev/null || true   # Codex 编排入口(引向 CLAUDE.md + .claude/commands)
 cp -n "$TPL/.claude/agents/"*.md         "$DEST/.claude/agents/"         2>/dev/null || true
 cp -n "$TPL/.claude/commands/"*.md       "$DEST/.claude/commands/"       2>/dev/null || true
 cp -n "$TPL/docs/lessons.md"             "$DEST/docs/lessons.md"         2>/dev/null || true

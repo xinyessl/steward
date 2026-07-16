@@ -1006,8 +1006,14 @@ const server = http.createServer((req, res) => {
       if (cur === null) { fs.writeFileSync(dest, tpl.split('{{PROJECT_NAME}}').join(p.name || '').split('{{PROJECT_ID}}').join(p.id || '')); claudeMd = true; }
       else { const ci = sect(cur); if (ti && ci) { fs.writeFileSync(dest, tpl.replace(ti, ci)); claudeMd = true; } }
     } catch {}
+    let agentsMd = false;   // Codex 编排入口:不存在 or steward 托管(含标记)→ 刷新;用户自有 AGENTS.md(无标记)不动
+    try {
+      const src = path.join(T, 'AGENTS.md'), dest = path.join(p.path, 'AGENTS.md');
+      let cur = null; try { cur = fs.readFileSync(dest, 'utf8'); } catch {}
+      if (cur === null || cur.includes('<!-- steward:agents -->')) { fs.copyFileSync(src, dest); agentsMd = true; }
+    } catch {}
     genBoard(p.path);
-    return send(res, 200, JSON.stringify({ ok: true, cmds, agents, claudeMd }));
+    return send(res, 200, JSON.stringify({ ok: true, cmds, agents, claudeMd, agentsMd }));
   }
   if (url.pathname === '/api/project-remove' && req.method === 'POST') {   // 移除项目 = 取消纳管 + 关该项目终端；不删磁盘文件
     let buf = ''; req.on('data', c => (buf += c)); req.on('end', () => {
