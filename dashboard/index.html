@@ -235,6 +235,9 @@ body.resizing #term-host iframe{pointer-events:none}
 .task-del{border:none;background:none;color:var(--c-t3);cursor:pointer;flex-shrink:0;display:none;padding:0}.task-row:hover .task-del{display:inline}.task-del:hover{color:var(--c-dg)}
 .task-go{border:none;background:none;color:var(--c-t3);cursor:pointer;flex-shrink:0;display:none;padding:0}.task-row:hover .task-go{display:inline}.task-go:hover{color:var(--c-pri)}
 .mini-btn2{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;border:1px solid var(--c-bds);background:var(--c-card);color:var(--c-t2);border-radius:6px;padding:3px 10px;cursor:pointer}
+.nh-btn{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;border:1px solid var(--c-pri-b);background:var(--c-pri-l);color:var(--c-pri);border-radius:5px;padding:1px 8px;cursor:pointer;margin-left:8px;vertical-align:middle}.nh-btn:hover{background:var(--c-pri);color:#fff}
+.nh-done{opacity:.6}.nh-tag{margin-left:8px;font-size:10px;color:var(--c-wn);font-weight:700;white-space:nowrap}
+.adj-fab{position:fixed;z-index:120;display:none;font-size:11.5px;font-weight:700;border:none;background:var(--c-pri);color:#fff;border-radius:6px;padding:4px 12px;cursor:pointer;box-shadow:0 4px 14px rgba(15,39,68,.28);align-items:center;gap:4px}.adj-fab.on{display:inline-flex}
 .mini-btn2:hover{border-color:var(--c-pri);color:var(--c-pri)}
 .mini-btn2.danger:hover{border-color:var(--c-dg);color:var(--c-dg)}
 .ophint{font-size:11px;color:var(--c-t3);margin-left:2px}
@@ -534,8 +537,43 @@ input::placeholder,textarea::placeholder{color:var(--c-t3)}
 <!-- spec 查看弹窗 -->
 <div class="modal" id="spec-modal" onclick="if(event.target===this)closeSpec()">
   <div class="modal-bd">
-    <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><button class="mini-btn2" id="spec-allsec" style="margin-right:8px" onclick="toggleAllSpecSecs()" title="展开 / 收起全部章节"><i class="ti ti-chevrons-down" id="spec-allsec-ic"></i> <span id="spec-allsec-tx">展开全部</span></button><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
+    <div class="modal-h"><span class="mt" id="spec-mt">spec</span><span class="mf" id="spec-mf"></span><button class="mini-btn2" style="margin-right:8px" onclick="refreshSpec()" title="重读 spec 文件（AI 落地裁决后刷新看结果）"><i class="ti ti-refresh"></i> 刷新</button><button class="mini-btn2" id="spec-allsec" style="margin-right:8px" onclick="toggleAllSpecSecs()" title="展开 / 收起全部章节"><i class="ti ti-chevrons-down" id="spec-allsec-ic"></i> <span id="spec-allsec-tx">展开全部</span></button><span class="modal-x" onclick="closeSpec()"><i class="ti ti-x"></i></span></div>
     <div class="modal-body md" id="spec-mbody"></div>
+  </div>
+</div>
+<!-- NEEDS-HUMAN 裁决录入：弹窗写决定 → 带入 CLI 终端 → 终端定稿 -->
+<div class="modal" id="nh-modal" onclick="if(event.target===this)closeNH()">
+  <div class="modal-bd" style="max-width:600px">
+    <div class="modal-h"><span class="mt"><i class="ti ti-gavel"></i> 裁决待人确认项</span><span class="modal-x" onclick="closeNH()"><i class="ti ti-x"></i></span></div>
+    <div style="padding:16px 18px">
+      <div style="font-size:11.5px;color:var(--c-t3);margin-bottom:6px">待裁决项</div>
+      <div id="nh-item" style="font-size:12.5px;color:var(--c-t);background:var(--c-bg);border:1px solid var(--c-bd);border-radius:8px;padding:10px 12px;max-height:180px;overflow:auto;line-height:1.6"></div>
+      <div style="font-size:11.5px;color:var(--c-t3);margin:14px 0 6px">你的裁决 / 决定</div>
+      <textarea id="nh-input" placeholder="写下你的决定，会带进终端交 AI 落地（如：选方案A；字段 status VARCHAR(8)；停用首版即接入登录拦截）" style="width:100%;min-height:96px;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit;line-height:1.55;outline:none;resize:vertical"></textarea>
+      <div style="font-size:11px;color:var(--c-t3);margin-top:8px">带入终端后不会自动执行——你在终端里审一眼、按回车定稿。</div>
+    </div>
+    <div class="modal-h" style="border-top:1px solid var(--c-bd);border-bottom:none;justify-content:flex-end;gap:8px">
+      <button class="mini-btn2" onclick="closeNH()">取消</button>
+      <button class="mini-btn2" style="background:var(--c-pri);color:#fff;border-color:var(--c-pri)" onclick="submitNH()"><i class="ti ti-arrow-right"></i> 带入终端</button>
+    </div>
+  </div>
+</div>
+<!-- spec 正文选中文字 → 冒出「调整」浮标 → 弹窗写期望 → 带入 CLI 改 spec -->
+<button class="adj-fab" id="adj-fab" onmousedown="event.preventDefault()" onclick="openAdjustFromFab(this)"><i class="ti ti-edit"></i> 调整</button>
+<div class="modal" id="adj-modal" onclick="if(event.target===this)closeAdj()">
+  <div class="modal-bd" style="max-width:600px">
+    <div class="modal-h"><span class="mt"><i class="ti ti-edit"></i> 调整 spec 内容</span><span class="modal-x" onclick="closeAdj()"><i class="ti ti-x"></i></span></div>
+    <div style="padding:16px 18px">
+      <div style="font-size:11.5px;color:var(--c-t3);margin-bottom:6px">选中的原文</div>
+      <div id="adj-src" style="font-size:12.5px;color:var(--c-t);background:var(--c-bg);border:1px solid var(--c-bd);border-radius:8px;padding:10px 12px;max-height:160px;overflow:auto;line-height:1.6"></div>
+      <div style="font-size:11.5px;color:var(--c-t3);margin:14px 0 6px">哪里不对 / 期望改成</div>
+      <textarea id="adj-input" placeholder="描述问题 + 期望（如：这里写按医院合并，实际应按『产品·周』合并）" style="width:100%;min-height:96px;border:1px solid var(--c-bds);border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit;line-height:1.55;outline:none;resize:vertical"></textarea>
+      <div style="font-size:11px;color:var(--c-t3);margin-top:8px">带入终端后不自动执行——你在终端里审一眼、回车让 AI 改 spec，改完点弹窗「刷新」看结果。</div>
+    </div>
+    <div class="modal-h" style="border-top:1px solid var(--c-bd);border-bottom:none;justify-content:flex-end;gap:8px">
+      <button class="mini-btn2" onclick="closeAdj()">取消</button>
+      <button class="mini-btn2" style="background:var(--c-pri);color:#fff;border-color:var(--c-pri)" onclick="submitAdj()"><i class="ti ti-arrow-right"></i> 带入终端</button>
+    </div>
   </div>
 </div>
 <!-- 系统参考抽屉：spec 结构 / 规约全貌（右侧滑出，常驻；点单个 spec → 详情走弹窗叠在其上） -->
@@ -694,7 +732,10 @@ function renderSpecs(){
   }
   if(pendingHighlight && document.getElementById('spec-row-'+pendingHighlight)){ const id=pendingHighlight; pendingHighlight=null; setTimeout(()=>highlightSpec(id),60); }   // 从通知点过来：定位高亮
 }
+let _curSpecId='';
+function refreshSpec(){ if(_curSpecId) openSpec(_curSpecId); }   // AI 改完 spec 后重读文件看结果
 async function openSpec(id){
+  _curSpecId=id;
   const m=document.getElementById('spec-modal'), body=document.getElementById('spec-mbody');
   document.getElementById('spec-mt').textContent=id; document.getElementById('spec-mf').textContent='';
   body.innerHTML='<div class="sst">加载中…</div>'; m.classList.add('on');
@@ -711,6 +752,7 @@ async function openSpec(id){
     }
     body.innerHTML = fmHtml + mdHtml(content);
     makeCollapsible(body);
+    wireNeedsHuman(body, id);   // 给 NEEDS-HUMAN 每条注入「裁决」按钮
     const _ic=document.getElementById('spec-allsec-ic'); if(_ic)_ic.className='ti ti-chevrons-down';   // 默认全收起 → 按钮显"展开全部"
     const _tx=document.getElementById('spec-allsec-tx'); if(_tx)_tx.textContent='展开全部';
     body.scrollTop=0;
@@ -733,6 +775,63 @@ function makeCollapsible(root){
   root.innerHTML=''; root.appendChild(frag);
 }
 function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); }
+// —— NEEDS-HUMAN 裁决：弹窗录入决定 → 带入 CLI 终端 → 终端定稿 ——
+let _nhCtx=null;
+function wireNeedsHuman(root, specId){
+  try{
+    const h=[...root.querySelectorAll('.md-sec-h')].find(x=>/NEEDS-?HUMAN|待人裁决/i.test(x.textContent||''));
+    if(!h)return;
+    const sb=h.parentElement&&h.parentElement.querySelector('.md-sec-b'); if(!sb)return;
+    [...sb.querySelectorAll('li')].forEach(li=>{
+      if(li.querySelector('.nh-btn'))return;
+      const btn=document.createElement('button'); btn.className='nh-btn'; btn.innerHTML='<i class="ti ti-gavel"></i> 裁决';
+      const txt=(li.textContent||'').replace(/\s+/g,' ').trim();
+      btn.onclick=e=>{ e.stopPropagation(); openNH(specId,txt,li); };
+      li.appendChild(btn);
+    });
+  }catch(e){}
+}
+function openNH(specId,itemText,li){ _nhCtx={specId,itemText,li}; document.getElementById('nh-item').textContent=itemText; document.getElementById('nh-input').value=''; document.getElementById('nh-modal').classList.add('on'); setTimeout(()=>document.getElementById('nh-input').focus(),40); }
+function closeNH(){ document.getElementById('nh-modal').classList.remove('on'); }
+function submitNH(){
+  if(!_nhCtx)return;
+  const dec=(document.getElementById('nh-input').value||'').replace(/\s+/g,' ').trim();
+  if(!dec){ toast('先写下你的裁决'); return; }
+  const label=_nhCtx.itemText.slice(0,60)+(_nhCtx.itemText.length>60?'…':'');
+  const cmd=`裁决 ${_nhCtx.specId} · 待人确认项「${label}」→ 我的决定：${dec}。请【直接更新该 spec 文件】：把这个决定落进对应正文章节（数据契约/业务规则/接口/AC 等该改处），并删除这条 NEEDS-HUMAN。我已在此确认决定，无需再让我确认 diff；按 §4.6 扫一下影响面，改完一句话说改了哪几处。`;
+  prefillTerm(cmd);
+  // 视觉反馈:标记本条"已交终端·待AI落地"(不直接删——删除由 AI 改 spec 文件时完成),不关 spec 弹窗
+  try{ const li=_nhCtx.li; if(li){ li.classList.add('nh-done'); if(!li.querySelector('.nh-tag')){ const t=document.createElement('span'); t.className='nh-tag'; t.textContent='⏳ 已交终端·待AI落地'; li.appendChild(t); } const b=li.querySelector('.nh-btn'); if(b)b.style.display='none'; } }catch(e){}
+  closeNH();
+  toast('决定已带入终端——去终端回车让 AI 落地；AI 改完 spec 后重开此页即不再显示本条');
+}
+// —— 调整任意 spec 内容：选中正文文字 → 浮标 → 弹窗写期望 → 带入 CLI 改 spec ——
+let _adjCtx=null;
+document.addEventListener('mouseup',()=>{
+  const body=document.getElementById('spec-mbody'), fab=document.getElementById('adj-fab'); if(!body||!fab)return;
+  if(!document.getElementById('spec-modal').classList.contains('on')){ fab.classList.remove('on'); return; }
+  const sel=window.getSelection();
+  if(!sel||sel.isCollapsed||!sel.rangeCount){ fab.classList.remove('on'); return; }
+  const txt=(sel.toString()||'').replace(/\s+/g,' ').trim(), an=sel.anchorNode;
+  if(!txt||txt.length<2||!an||!body.contains(an.nodeType===1?an:an.parentNode)){ fab.classList.remove('on'); return; }
+  const rect=sel.getRangeAt(0).getBoundingClientRect();
+  fab.style.left=Math.max(8,Math.min(rect.left+rect.width/2-36, window.innerWidth-88))+'px';
+  fab.style.top=Math.max(8,rect.top-34)+'px';
+  fab.dataset.txt=txt; fab.classList.add('on');
+});
+document.addEventListener('mousedown',e=>{ const fab=document.getElementById('adj-fab'); if(fab&&e.target!==fab&&!fab.contains(e.target)) fab.classList.remove('on'); });
+function openAdjustFromFab(el){ const t=el.dataset.txt||''; el.classList.remove('on'); if(t) openAdjust(_curSpecId,t); }
+function openAdjust(specId,srcText){ _adjCtx={specId,srcText}; document.getElementById('adj-src').textContent=srcText; document.getElementById('adj-input').value=''; document.getElementById('adj-modal').classList.add('on'); setTimeout(()=>document.getElementById('adj-input').focus(),40); }
+function closeAdj(){ document.getElementById('adj-modal').classList.remove('on'); }
+function submitAdj(){
+  if(!_adjCtx)return;
+  const want=(document.getElementById('adj-input').value||'').replace(/\s+/g,' ').trim();
+  if(!want){ toast('先写下要怎么改'); return; }
+  const src=_adjCtx.srcText.slice(0,120)+(_adjCtx.srcText.length>120?'…':'');
+  const cmd=`调整 ${_adjCtx.specId} · 原文「${src}」→ 期望：${want}。请【直接更新该 spec 文件】把这处改对（改到正文对应位置），我已确认无需再确认 diff；按 §4.6 扫一下影响面，改完一句话说改了哪。`;
+  prefillTerm(cmd); closeAdj();
+  toast('已带入终端——回车让 AI 改 spec，改完点弹窗「刷新」看结果');
+}
 function toggleAllSpecSecs(){   // spec 详情弹窗：一键展开/收起全部章节(.md-sec)
   const body=document.getElementById('spec-mbody'); if(!body)return;
   const secs=[...body.querySelectorAll('.md-sec')]; if(!secs.length)return;
