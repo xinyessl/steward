@@ -11,6 +11,10 @@
   const projWins = {};         // projectId -> [{key,label}]：每个项目各自一组窗口，切换不丢
   let seq = 0;
   const mkKey = () => 'n' + Date.now().toString(36) + (seq++);
+  // 持久化"每个项目开着哪些对话窗口"(key/引擎/会话id/名字) → 强杀/重启后 re-attach 恢复，不丢历史。
+  const SW_KEY = 'steward-native-wins';
+  function loadSaved() { try { return JSON.parse(localStorage.getItem(SW_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function saveWins() { try { const o = {}; for (const pid in projWins) { const arr = projWins[pid] || []; if (arr.length) o[pid] = arr.map(w => ({ key: w.key, label: w.label || '', userLabel: w.userLabel || '', engine: w.engine || 'claude', sessionId: w.sessionId || '' })); } localStorage.setItem(SW_KEY, JSON.stringify(o)); } catch (e) {} }
 
   window.stewardPty.onData(({ key, data }) => { const t = terms[key]; if (t) t.term.write(data); });
   window.stewardPty.onExit(({ key }) => { const t = terms[key]; if (t) t.term.write('\r\n\x1b[2m[进程已退出]\x1b[0m\r\n'); });
@@ -22,6 +26,16 @@
     const term = new XTerm({ cursorBlink: true, fontSize: 13, fontFamily: 'Menlo,Consolas,"Courier New",monospace', theme: { background: '#111' }, scrollback: 5000, macOptionClickForcesSelection: true, rightClickSelectsWord: true });   // claude 开鼠标模式时，按住 Option 拖拽仍能选中文字 → 再 Cmd+C/「复制」
     let fit = null; try { if (FitCls) { fit = new FitCls(); term.loadAddon(fit); } } catch (e) {}
     term.open(el);
+    // 拖文件进终端 → 把绝对路径(shell 转义)写到光标处，像原生终端。Electron31 file.path 已移除，走 preload 暴露的 webUtils。
+    el.addEventListener('dragover', (e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (x) {} }, true);
+    el.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      let files = []; try { files = [...(e.dataTransfer.files || [])]; } catch (x) {}
+      const paths = files.map(f => { try { return (window.stewardPty.getFilePath && window.stewardPty.getFilePath(f)) || ''; } catch (_) { return ''; } }).filter(Boolean);
+      if (!paths.length) return;
+      const esc = p => /[^\w@%+=:,./~-]/.test(p) ? "'" + p.replace(/'/g, "'\\''") + "'" : p;   // 有空格/特殊字符 → 单引号包，shell 安全
+      try { window.stewardPty.write(key, paths.map(esc).join(' ') + ' '); } catch (x) {}   // 末尾加空格，方便接着打
+    }, true);
     // Cmd+C(mac) / Ctrl+Shift+C 有选区时复制(原生剪贴板)；普通 Ctrl+C 仍透传给终端(SIGINT)
     try { term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && (e.key === 'c' || e.key === 'C') && (e.metaKey || (e.ctrlKey && e.shiftKey))) {
@@ -57,7 +71,7 @@
 
   window.addWindowDom = function (key, _port, label, engine) {
     mount(key);
-    windows.push({ key, label, engine: engine || 'claude' }); renderTabs(); activate(windows.length - 1);
+    windows.push({ key, label, engine: engine || 'claude' }); renderTabs(); activate(windows.length - 1); saveWins();
   };
   window.newWindow = async function (engine) {
     if (!PROJECT) { toast('请先「新增项目」'); return; }
@@ -98,7 +112,7 @@
     const w = windows[idx]; if (!w) return;
     try { await window.stewardPty.kill(w.key); } catch (e) {}
     const el = document.querySelector('#term-host .nterm[data-key="' + w.key + '"]'); if (el) el.remove();
-    delete terms[w.key]; windows.splice(idx, 1);
+    delete terms[w.key]; windows.splice(idx, 1); saveWins();
     if (!windows.length) { activeIdx = -1; renderTabs(); return; }
     renderTabs(); activate(Math.min(idx, windows.length - 1));   // activate 不再重建 DOM，关窗后需自己 renderTabs 去掉已关 tab
   };
@@ -148,7 +162,7 @@
       attnByProject = attn; busyByProject = busyP; doneByProject = doneP; applyProjBadges();             // 项目栏多状态角标(native 数据驱动)
       const total = Object.values(attn).reduce((a, b) => a + b, 0);
       document.title = (total ? `(${total}) ` : '') + 'Steward 控制台';      // 浏览器/窗口标题也带 (N)
-      renderTabs();
+      renderTabs(); saveWins();   // 顺带把回填的会话 id / 重命名持久化，供重启恢复
     } catch (e) {}
   }
   window.pollWinStates = nativePoll;                 // 后续若有按 window 调用的，走 native
@@ -164,6 +178,24 @@
     } catch (e) {}
     await newWindow();
   }
+  async function restoreOrOpen() {   // 重启恢复：先把上次开着的对话 re-attach 回来(tmux 存活的原样回来、死了的按 sessionId resume)，都没有才开新的
+    const saved = (loadSaved()[PROJECT] || []);
+    let n = 0;
+    for (const sw of saved) {
+      try {
+        let alive = false; try { alive = await window.stewardPty.tmuxAlive(sw.key); } catch (e) {}
+        if (!alive && !sw.sessionId) continue;   // tmux 会话没了、又没会话 id → 是个没用过的空窗口，别复活
+        const p = PROJECTS.find(x => x.id === PROJECT) || {};
+        const r = await window.stewardPty.create({ key: sw.key, projectId: PROJECT, cwd: p.path, sessionId: sw.sessionId || '', engine: sw.engine || 'claude' });
+        if (!r || !r.ok) continue;
+        addWindowDom(sw.key, 0, sw.userLabel || sw.label || '恢复的对话', r.engine || sw.engine || 'claude');
+        const w = windows[windows.length - 1]; if (w) { w.sessionId = sw.sessionId || ''; if (sw.userLabel) w.userLabel = sw.userLabel; }
+        n++;
+      } catch (e) {}
+    }
+    if (n) { activate(windows.length - 1); return; }
+    await openLatestOrNew();
+  }
   window.loadTerminal = async function () {
     const msg = document.getElementById('term-msg');
     if (!PROJECT) { if (msg) { msg.style.display = 'grid'; msg.innerHTML = '还没有纳管任何项目。点右上角 <b>「新增项目」</b>。'; } return; }
@@ -173,7 +205,7 @@
     if (windows.length) { activeIdx = -1; renderTabs(); activate(windows.length - 1); termBuiltFor = PROJECT; return; }   // 已有窗口：恢复显示
     if (_building.has(PROJECT)) return;                                 // 并发已在建首窗 → 跳过，防双开
     _building.add(PROJECT);
-    try { activeIdx = -1; renderTabs(); await openLatestOrNew(); }      // 没窗口：恢复最近历史对话/新对话
+    try { activeIdx = -1; renderTabs(); await restoreOrOpen(); }      // 没窗口：先 re-attach 上次开着的对话，没有再恢复最近/开新
     finally { _building.delete(PROJECT); }
     termBuiltFor = PROJECT;
   };

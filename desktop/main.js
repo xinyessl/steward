@@ -128,7 +128,31 @@ function codexHookArgs(key) {
   return ['-c', `hooks.SessionStart=${ev(idle)}`, '-c', `hooks.UserPromptSubmit=${ev(doing)}`, '-c', `hooks.PreToolUse=${ev(doing)}`, '-c', `hooks.PostToolUse=${ev(doing)}`, '-c', `hooks.PermissionRequest=${ev(waiting)}`, '-c', `hooks.Stop=${ev(idle)}`];
 }
 
-const ptys = new Map();   // key -> { proc, term(headless), lastSig, busy, confirm, title, activity, projectId, cwd }
+// ── tmux 持久层：claude/codex 跑在 tmux 会话里 → 强杀 Electron 后仍存活、重启 re-attach，不丢对话历史（与网页版同模型）──
+// 带回退：无 tmux / 启动自检不过 / STEWARD_NO_TMUX=1 → 回到"直起 shell"现状，绝不让终端起不来。
+const TMUX_BIN = (() => {
+  if (process.env.TMUX_BIN && fs.existsSync(process.env.TMUX_BIN)) return process.env.TMUX_BIN;
+  for (const c of ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux']) if (fs.existsSync(c)) return c;
+  try { const s = (spawnSync('which', ['tmux'], { encoding: 'utf8', env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } }).stdout || '').trim(); if (s && fs.existsSync(s)) return s; } catch {}
+  return null;
+})();
+const TMUX_SOCK = 'steward-desktop';
+const TMUX_CONF = path.join(STATE_DIR, 'tmux.conf');
+function tmuxName(key) { return 'sd-' + String(key).replace(/[^A-Za-z0-9_]/g, ''); }
+let USE_TMUX = false;
+if (TMUX_BIN && process.platform !== 'win32' && !process.env.STEWARD_NO_TMUX) {
+  try {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.writeFileSync(TMUX_CONF, ['set -g status off', 'set -sg escape-time 0', 'set -g history-limit 50000', 'set -g destroy-unattached off', 'set -g mouse off'].join('\n') + '\n');
+    const t = spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-d', '-s', '__smoke__', 'true'], { timeout: 6000, env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } });
+    if (t.status === 0) { USE_TMUX = true; try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'kill-session', '-t', '__smoke__'], { timeout: 3000 }); } catch {} }
+  } catch {}
+}
+console.log('[steward] tmux 持久会话 =', USE_TMUX ? ('开(' + TMUX_BIN + ')') : '关(回退直起)');
+function tmuxAlive(name) { if (!USE_TMUX || !name) return false; try { return spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'has-session', '-t', name], { timeout: 3000 }).status === 0; } catch { return false; } }
+function tmuxKill(name) { if (!USE_TMUX || !name) return; try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'kill-session', '-t', name], { timeout: 4000 }); } catch {} }
+
+const ptys = new Map();   // key -> { proc, term(headless), lastSig, busy, confirm, title, activity, projectId, cwd, tmux }
 
 function serialize(term) {
   if (!term) return '';
@@ -173,32 +197,41 @@ function ptyCreate(e, { key, projectId, cwd, sessionId, engine }) {
     if (fs.existsSync(HOOK_SETTINGS)) args.push('--settings', HOOK_SETTINGS);   // 叠加状态钩子(不污染用户配置)
   }
   const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
-  let proc;
+  let proc, recTmux = '';
   try {
     const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH, STEWARD_WIN: key, STEWARD_STATE_DIR: STATE_DIR } };
     if (eng === 'cmd') {
-      // 普通命令行终端：直接跑用户登录 shell，让人在项目目录里自己敲命令(不挂 agent/钩子)
+      // 普通命令行终端：直接跑用户登录 shell，让人在项目目录里自己敲命令(不挂 agent/钩子，不进 tmux)
       if (process.platform === 'win32') proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', [], opts);
       else proc = pty.spawn(process.env.SHELL || '/bin/zsh', ['-il'], opts);
     } else if (process.platform === 'win32') {
-      // .cmd shim，ConPTY 不能直接跑 → 经 cmd.exe /c(按 PATHEXT 解析)
+      // .cmd shim，ConPTY 不能直接跑 → 经 cmd.exe /c(按 PATHEXT 解析)。Windows 无 tmux，不做持久层
       proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', ['/c', [winCmd, ...args].join(' ')], opts);
     } else {
-      // 经登录 shell exec：PATH/node 解析与你终端一致，避开 GUI 精简 PATH + nvm shebang 的 posix_spawn 失败
+      // 经登录 shell exec：PATH/node 解析与你终端一致，避开 GUI 精简 PATH + nvm shebang 的 posix_spawn 失败。
+      // 内联 STEWARD_WIN/STEWARD_STATE_DIR：tmux 复用同一 server 时新会话会继承旧 server 的 env → STEWARD_WIN 会被串成
+      // 第一个窗口的，hook(claude --settings / codex wrapper→report-state.cjs) 就写错窗口的状态文件。内联到 exec 前保证每窗口拿到自己的 key。
       const sh = process.env.SHELL || '/bin/zsh';
-      proc = pty.spawn(sh, ['-lic', 'exec ' + [BIN, ...args].map(shq).join(' ')], opts);
+      const innerCmd = `STEWARD_WIN=${shq(key)} STEWARD_STATE_DIR=${shq(STATE_DIR)} exec ` + [BIN, ...args].map(shq).join(' ');
+      if (USE_TMUX) {
+        recTmux = tmuxName(key);
+        // tmux new-session -A：会话在则 attach(强杀存活的对话原样回来、忽略后面的命令)、不在则建并跑(内层再走登录 shell 保 PATH)
+        proc = pty.spawn(TMUX_BIN, ['-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', recTmux, sh, '-lic', innerCmd], opts);
+      } else {
+        proc = pty.spawn(sh, ['-lic', innerCmd], opts);
+      }
     }
   } catch (err) {
     console.error('[pty] spawn 失败：', { eng, BIN, shell: process.env.SHELL, platform: process.platform, msg: err && err.message });
     return { ok: false, error: eng + ' 启动失败：' + (err && err.message) };
   }
   const term = HeadlessTerm ? new HeadlessTerm({ cols: 100, rows: 30, allowProposedApi: true }) : null;
-  const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd, sessionId: sessionId || '', engine: eng };
+  const rec = { proc, term, lastSig: undefined, busy: false, confirm: false, title: '', activity: '', projectId, cwd, sessionId: sessionId || '', engine: eng, tmux: recTmux };
   ptys.set(key, rec);
   try { fs.writeFileSync(path.join(STATE_DIR, key + '.json'), JSON.stringify({ state: 'init', ts: Date.now() })); } catch {}   // 初始 init(非 idle):区分"钩子还没触发"(走屏幕兜底) vs "钩子说空闲"(信钩子)
   const sendWin = (ch, payload) => { if (mainWin && !mainWin.isDestroyed()) { try { mainWin.webContents.send(ch, payload); } catch {} } };   // 窗口可能已销毁(关闭时 pty 还在吐数据)→ 守卫，否则 Object has been destroyed
   proc.onData(d => { rec.lastDataAt = Date.now(); if (term) { try { term.write(d); } catch {} } sendWin('pty-data', { key, data: d }); });   // 原始数据流时刻:claude 一输出就更新,最可靠的"在干活"信号(不依赖屏幕解析)
-  proc.onExit(() => { ptys.delete(key); try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} try { fs.rmSync(path.join(STATE_DIR, 'codex-' + key), { recursive: true, force: true }); } catch {} sendWin('pty-exit', { key }); });
+  proc.onExit(() => { ptys.delete(key); if (!rec.tmux) { try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} try { fs.rmSync(path.join(STATE_DIR, 'codex-' + key), { recursive: true, force: true }); } catch {} } sendWin('pty-exit', { key }); });   // tmux 窗口:退出 app=detach(会话存活)，别删 hook 文件；真关窗在 pty-kill 里清
   return { ok: true, engine: eng };   // 返回实际用的引擎(codex 没装会回退 claude)，渲染端据此打对徽章
 }
 
@@ -284,7 +317,8 @@ setInterval(() => {
 ipcMain.handle('pty-create', ptyCreate);
 ipcMain.handle('pty-write', (e, { key, data }) => { const r = ptys.get(key); if (r) try { r.proc.write(data); } catch {} });
 ipcMain.handle('pty-resize', (e, { key, cols, rows }) => { const r = ptys.get(key); if (r) { try { r.proc.resize(cols, rows); } catch {} if (r.term) try { r.term.resize(cols, rows); } catch {} } });
-ipcMain.handle('pty-kill', (e, { key }) => { const r = ptys.get(key); if (r) { try { r.proc.kill(); } catch {} ptys.delete(key); } });
+ipcMain.handle('pty-kill', (e, { key }) => { const r = ptys.get(key); if (r) { try { r.proc.kill(); } catch {} if (r.tmux) tmuxKill(r.tmux); try { fs.rmSync(path.join(STATE_DIR, key + '.json'), { force: true }); } catch {} try { fs.rmSync(path.join(STATE_DIR, 'codex-' + key), { recursive: true, force: true }); } catch {} ptys.delete(key); } });   // 用户主动关窗 = 真关：杀 tmux 会话(彻底结束对话) + 清 hook 文件，区别于退出 app 只 detach
+ipcMain.handle('pty-tmux-alive', (e, { key }) => tmuxAlive(tmuxName(key)));   // 重启时问：这个窗口的 tmux 会话还活着吗(强杀存活的可直接 re-attach)
 ipcMain.handle('pty-capture', (e, { key }) => { const r = ptys.get(key); return r ? serialize(r.term) : ''; });
 ipcMain.handle('pty-debug', (e, { key }) => { const r = ptys.get(key); if (!r) return ''; const now = Date.now(); const hs = readHookState(key); const head = `busy=${r.busy} confirm=${r.confirm} hook=${hs ? hs.state + '(' + (now - hs.ts) + 'ms)' : '无'} rows=${r.term && r.term.rows} cols=${r.term && r.term.cols} dataAgo=${r.lastDataAt ? (now - r.lastDataAt) + 'ms' : '-'} changeAgo=${r.lastChange ? (now - r.lastChange) + 'ms' : '-'}`; return head + '\n----headless screen----\n' + serialize(r.term); });   // 状态诊断:看主进程实际抓到的屏幕 + 判定 + 钩子态
 ipcMain.handle('clipboard-write', (e, { text }) => { try { clipboard.writeText(String(text || '')); return true; } catch { return false; } });   // 原生剪贴板：不受 sandbox/CSP/焦点限制(navigator.clipboard 在 sandbox 下会失效)
