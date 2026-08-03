@@ -149,11 +149,19 @@
 | 任务清单（主线·批次/task） | `docs/tasks.json`（本地不入库；批次=进件，task 带 `specRef`） |
 | 进度看板 | `docs/board.md` |
 | 需求 PRD | `docs/`（按本项目补充） |
-| 规约 spec（系统参考资料） | `docs/specs/`（`_TEMPLATE.md` / `README.md` / 各 spec） |
+| 规约 spec（系统参考资料·**清单见 §6.1**） | `docs/specs/`（`_TEMPLATE.md` / `README.md` / 各 spec） |
 | 接口契约 / 真实库结构 / 界面基线 | 见「①本项目信息」 |
 | 验收报告 / 变更 | `docs/reviews/`、`docs/changes/` |
 | 开发 agent | `.claude/agents/*.md` |
 | 架构 / 栈 / 命名 | 本项目 `README.md` |
+
+### 6.1 spec 索引（系统说明书清单——知道有哪几份、各讲啥；**需要时自己 `cat` 读全文，不预载**）
+> 目的：会话开局就知道"系统里有哪些说明书 + 各讲啥"，但**不把全文塞进上下文**（spec 一多会撑爆、白烧 token）。**只挂目录、按需读全文**——这是本体系统一做法，不给单个项目开 `@import` 预载。
+> **维护**：`/scan`（逆向建 spec）、`/spec`（新增 / 改 / 删 spec）时**顺手在此表加 / 改 / 删一行**，保持不过期。
+
+| spec | 一句话 |
+|---|---|
+| _（空：`/scan` 或 `/spec` 建了 spec 后在此登记一行，如 `docs/specs/RE-01-xxx.md` → 一句话讲它管什么）_ |  |
 
 ## 7. 人类关卡（你只守这四关）
 1. **spec 评审**：draft → ready 由你点头（源头把控，最省力）。

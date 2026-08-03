@@ -27,6 +27,7 @@ description: 扫描本项目源码，按模块生成/更新 docs/specs/<ID>.md �
 2. **只为"尚未覆盖"的功能各拆一条全栈 spec**，逐个派扫描子代理（便宜模型）产出 `docs/specs/<ID>.md`（已有同功能 spec 的**跳过**，除非人明确要求重扫该条）：
    - 读相关代码：该功能涉及的前端页面/接口/服务/数据访问，串成一条全栈描述。
    - 按模板填：①模块信息（`module:` = 顶层功能模块）②范围 ③**AC（从现有行为反推，Given-When-Then）** ④接口契约（真实路径/入参/出参）⑤数据契约（真实表/字段，禁止臆造列名）⑥业务规则/权限/留痕 ⑦关键流程。拿不准的标 `NEEDS-HUMAN`。
+2.5. **登记 spec 索引**：新建的 spec 各在 `CLAUDE.md §6.1 spec 索引` 表里加一行（`docs/specs/<ID>.md` → 一句话讲它管什么），保持索引与 `docs/specs/` 同步、不过期。
 3. 跑 `node tools/board.mjs` 入库。
 4. **确保 .gitignore 到位（只提交源头、不提交派生）**：若本项目是 git 仓库——
    - `docs/.gitignore` 含：`board.json` `board.md` `tasks.json` `.state/`；`.claude/.gitignore` 含：`settings.local.json` `plan.md`（没有就照此创建）。
