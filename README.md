@@ -14,7 +14,8 @@ Zero third-party dependencies (one Node script runs the server), a single-page c
 - **Auto-generate specs for existing projects**: `/scan` reverse-reads your current code and builds a `docs/specs/*.md` baseline **by feature module** (cheap model, incremental, flags `NEEDS-HUMAN`), so legacy projects become "documented and traceable" too.
 - **Spec-driven development**: new requirements/changes are first broken down + run through **impact analysis** (touch one thing → auto-find which specs are affected) → edit spec → implement → accept on the board.
 - **Solve it once, never again** — a **two-tier lessons base**: every non-obvious problem you fix is distilled into a lesson, routed by scope. **Project-specific** pitfalls (a particular style, theme color, this project's field quirks) go to the project's own `docs/lessons.md`; **general** ones (does pagination work, is search/filter UX consistent…) go to Steward's **global** `lessons.md` (committed with the tool, shared across all projects and users). The dev agent **reads both before each task** and **writes a new lesson after** solving one — pitfalls stop recurring, across the project and across everyone who uses Steward.
-- **Embedded terminal**: open multiple claude windows per project (persisted via ttyd + tmux, survives refresh/reconnect), with a live tri-color status: working / needs-confirmation / idle.
+- **Embedded terminal (Claude / Codex / plain shell)**: open multiple windows per project — start an AI session with **Claude** or **Codex**, or a **plain command-line** window to type commands yourself; persisted via ttyd + tmux (survives refresh/reconnect/hard-kill), with a live tri-color status: working / needs-confirmation / idle.
+- **Desktop client (native mac / Windows)**: package the console as a desktop app; the terminal switches to node-pty + xterm (native), so **Windows works natively — no WSL needed**; a built-in "Check for updates" hot-patches the code without reinstalling. See "Desktop client" below.
 - **Tool/data isolation**: the tool itself holds no project data; the project registry lives in `~/.steward/`, each project's artifacts stay in its own directory — updating the tool never touches your data.
 
 ## Feature overview
@@ -42,7 +43,10 @@ sudo apt install -y ttyd      # available on Ubuntu 22.04+; on older releases gr
 ```
 
 ### Windows
-This tool relies on Unix-style components (`ttyd` / `tmux` / `lsof` / `pkill`), so it is **not supported on native Windows** (there is no tmux to install under PowerShell/CMD — that's the usual "can't download tmux" cause). Use **WSL2** (Windows Subsystem for Linux) and install everything inside WSL:
+
+> **Want native Windows without WSL?** Use the **Desktop client** (above) — its terminal runs on node-pty + xterm and needs none of these. **The WSL steps below are only for the web console.**
+
+The **web console** relies on Unix-style components (`ttyd` / `tmux` / `lsof` / `pkill`), which don't run on native Windows (no tmux under PowerShell/CMD — that's the usual "can't download tmux" cause). To run the **web console** on Windows, use **WSL2** (Windows Subsystem for Linux) and install everything inside WSL:
 
 1. Install WSL2 + a distro (admin PowerShell): `wsl --install -d Ubuntu`, then reboot and open Ubuntu.
 2. **Inside WSL** (the Ubuntu terminal, not PowerShell), install the dependencies:
@@ -71,6 +75,14 @@ cd steward
 bash tools/start.sh          # → http://127.0.0.1:51780
 ```
 
+## Desktop client (optional · recommended on Windows)
+
+Package the console as a desktop app — **native on Windows, no WSL** (the terminal uses node-pty + xterm, not ttyd/tmux/lsof). Smoother on mac too.
+
+- **Download & install**: grab `Steward-*.dmg` (mac) / `Steward.Setup.*.exe` (Windows) from [Releases](https://github.com/xinyessl/steward/releases/latest). Unsigned: on first launch right-click → Open (mac) / click "Run anyway" (Windows).
+- **Hot-update**: the app's "Check for updates" pulls the latest code (tools / dashboard / templates) — no dmg reinstall needed; you only reinstall when the shell itself changes (e.g. the terminal engine).
+- **Run / build it yourself**: `cd desktop && npm install && npm start`; for installers see `desktop/README.md` (local `npm run dist:mac` / `dist:win`, or push a `v*` tag to let GitHub Actions build mac + win packages and cut a Release).
+
 ## Quick start
 
 1. In the console click **"Add project"**, then pick the **project type**:
@@ -87,7 +99,8 @@ bash tools/start.sh          # → http://127.0.0.1:51780
 | Command | Purpose |
 |---|---|
 | `/init` | Greenfield startup: pick stack + scaffold minimal skeleton + .gitignore (PRD+prototype start; run before the first `/build`) |
-| `/scan [module]` | Reverse-read existing code, generate/update the spec baseline by feature module |
+| `/scan [module]` | Reverse-read existing code, generate/update the **3-layer system manual** (module map + guides + FAQ scaffold) |
+| `/intake <feishu link / text>` | Intake: turn a Feishu doc/bitable or a chunk of text into a task batch on the task list |
 | `/spec <requirement>` | Turn requirements (one or many at once) into verifiable specs, with breakdown + impact analysis |
 | `/build <id>` | Implement one feature per spec (dev agent: implement + test + real-DB smoke) |
 | `/fix <bug/change>` | Close the loop on a bug/change (breakdown + impact → edit spec/test → edit code → regress) |
@@ -105,12 +118,14 @@ steward/                     # the tool itself (shareable, contains no project d
 ├─ tools/start.sh            #   launch
 ├─ tools/new-project.sh      #   register a project from the CLI
 ├─ dashboard/index.html      #   console UI
+├─ desktop/                  #   desktop client (Electron; node-pty + xterm, native mac/Windows)
 └─ templates/                #   new-project scaffold (copied wholesale into a new project)
    ├─ CLAUDE.md              #     the managed project's orchestration manual (the methodology)
    ├─ .claude/agents/dev.md  #     dev agent
-   ├─ .claude/commands/      #     /init /scan /spec /build /fix /accept /autopilot
-   ├─ docs/specs/_TEMPLATE.md#     uniform spec template
-   └─ tools/board.mjs        #     derives the board from specs
+   ├─ .claude/commands/      #     /init /scan /spec /build /fix /accept /intake /autopilot …
+   ├─ docs/specs/            #     spec templates: _TEMPLATE (feature) / _TEMPLATE-薄spec / _TEMPLATE-流程 + 00-功能模块地图 (layer 1)
+   ├─ docs/faq/              #     layer-3 FAQ templates
+   └─ tools/board.mjs        #     derives the board from specs (recognizes type:guide)
 
 ~/.steward/projects.json     # user data: the project registry (isolated from the tool; override with STEWARD_DATA)
 <your-project>/docs/specs/*.md  # per-project artifact: specs (source of truth, commit to git)
@@ -121,6 +136,16 @@ steward/                     # the tool itself (shareable, contains no project d
 - **Commit**: `docs/specs/*` (the source, incl. status), `docs/lessons.md` (this project's pitfalls), `docs/changes`, `docs/reviews`, `CLAUDE.md`, `.claude/agents`+`commands`, `tools/board.mjs`. (The **global** lessons base is `lessons.md` in the Steward repo, committed with the tool.)
 - **Don't commit** (generated / runtime / local): `docs/board.json`, `docs/board.md`, `docs/tasks.json`, `docs/.state/`, `.claude/plan.md`, `.claude/settings.local.json`.
   > Newly imported projects ship with `docs/.gitignore` / `.claude/.gitignore` that enforce this boundary automatically.
+
+## System manual (3 layers · the AI's source of truth)
+
+`/scan` on existing code (or co-authoring on greenfield) produces a **3-layer manual written for AI to read**, serving both "AI-driven iteration" and "on-site Q&A":
+
+- **Layer 1 · Module map** (`docs/specs/00-功能模块地图.md`): the index / outermost entry — the full list of feature modules + key points; the AI reads this first to locate a task.
+- **Layer 2 · Guides** (`type: guide`): deep dives (mechanism / tables / data flow) only for **core / complex** modules; they don't run through dev/test/accept and show up as a separate "📖 Guide" group on the board.
+- **Layer 3 · FAQ** (`docs/faq/`): common Q&A (symptom → locate → fix), accreted from real on-site support.
+
+Feature specs (user story + AC + data contract, hung under the map) are the **acceptable units of work**; for a one-off change on top of an existing guide, use the **thin-spec template** (`_TEMPLATE-薄spec.md`: just AC + DoD + data contract, pointing back to the guide for facts).
 
 ## Methodology TL;DR
 

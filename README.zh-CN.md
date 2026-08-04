@@ -14,7 +14,8 @@
 - **导入存量项目自动建规约**：`/scan` 逆向扫描现有代码，按**功能模块**生成 `docs/specs/*.md` 基线（便宜模型、增量、标 `NEEDS-HUMAN`），让老项目也"有据可查"。
 - **spec 驱动开发**：新需求/改动先拆条 + **影响面分析**（改一处自动算波及哪些 spec）→ 改 spec → 实现 → 看板验收。
 - **解决过的问题，别再犯第二次**——**两层经验库**：每个非显然坑都沉淀成一条教训、按范围分流。**项目专属**（特定样式、主题色、本项目字段怪癖）进该项目的 `docs/lessons.md`；**通用**（分页是否生效、搜索/筛选交互是否统一…）进 Steward 的**全局** `lessons.md`（随工具提交、跨所有项目和使用者共享）。开发 agent **每次开工前两层都读、收尾后回写**——坑不再复发，本项目内不再犯，所有用 steward 的人也不再犯。这是本系统很关键的一块价值。
-- **内嵌终端**：每个项目可开多个 claude 对话窗口（ttyd + tmux 持久化，刷新/重连不丢），三色状态实时显示在干活/待确认/空闲。
+- **内嵌终端（Claude / Codex / 命令行）**：每个项目可开多个窗口——用 **Claude** 或 **Codex** 起 AI 对话、或开**纯命令行**自己敲命令；ttyd + tmux 持久化（刷新/重连/强杀不丢会话），三色状态实时显示在干活/待确认/空闲。
+- **桌面客户端（原生 mac / Windows）**：可把控制台装成桌面 App，终端改用 node-pty + xterm（原生），**Windows 也免 WSL 原生可用**；内置「检查更新」热更代码、不用重装。见下方「桌面客户端」。
 - **工具与数据隔离**：工具本体不含任何项目数据；项目注册表在 `~/.steward/`，各项目产物在各自目录——更新工具不碰你的数据。
 
 ## 功能一览
@@ -42,7 +43,10 @@ sudo apt install -y ttyd      # Ubuntu 22.04+ 自带；旧版没有就从 ttyd r
 ```
 
 ### Windows
-本工具依赖 `ttyd` / `tmux` / `lsof` / `pkill` 等类 Unix 组件，**Windows 原生不支持**（PowerShell/CMD 里没有 tmux 可装——这就是"tmux 下载不了"的常见原因）。请走 **WSL2**（Windows Subsystem for Linux），在 WSL 里装：
+
+> **想在 Windows 原生用、免 WSL？** 直接用下方「**桌面客户端**」——终端走 node-pty + xterm，不依赖 ttyd/tmux。**下面这套 WSL 方式只针对 web 版控制台。**
+
+**web 版**依赖 `ttyd` / `tmux` / `lsof` / `pkill` 等类 Unix 组件，Windows 原生跑不了（PowerShell/CMD 里没有 tmux 可装——这就是"tmux 下载不了"的常见原因）。要在 Windows 上跑 **web 版**请走 **WSL2**（Windows Subsystem for Linux），在 WSL 里装：
 
 1. 安装 WSL2 + 发行版（管理员 PowerShell）：`wsl --install -d Ubuntu`，重启后进入 Ubuntu。
 2. **在 WSL 里**装依赖（注意：是在 Ubuntu 终端里，不是 PowerShell）：
@@ -72,6 +76,14 @@ cd steward
 bash tools/start.sh          # → http://127.0.0.1:51780
 ```
 
+## 桌面客户端（可选 · Windows 推荐）
+
+把控制台装成桌面 App，**Windows 原生可用、无需 WSL**（终端用 node-pty + xterm，不依赖 ttyd/tmux/lsof）。mac 也更顺手。
+
+- **下载安装**：到 [Releases](https://github.com/xinyessl/steward/releases/latest) 下 `Steward-*.dmg`（mac）/ `Steward.Setup.*.exe`（Windows），装上即用。未签名：首次打开 mac 右键「打开」、Windows 点「仍要运行」。
+- **热更**：App 里「检查更新」直接拉最新代码（tools / dashboard / templates），不用重装 dmg；壳本身有变（如终端引擎）才需要装新包。
+- **自己跑 / 打包**：`cd desktop && npm install && npm start`；打安装包见 `desktop/README.md`（本地 `npm run dist:mac` / `dist:win`，或推 `v*` tag 走 GitHub Actions 自动打 mac + win 包并发 Release）。
+
 ## 快速上手
 
 1. 控制台点 **「新增项目」**，先选**项目类型**：
@@ -88,7 +100,8 @@ bash tools/start.sh          # → http://127.0.0.1:51780
 | 命令 | 作用 |
 |---|---|
 | `/init` | 绿地启动：定栈 + 搭最小工程骨架 + .gitignore（PRD+原型起步、首次 `/build` 前先跑） |
-| `/scan [模块]` | 扫现有代码，按功能模块逆向生成/更新 spec 基线 |
+| `/scan [模块]` | 扫现有代码，按功能模块逆向生成/更新**三层说明书**（功能模块地图 + 导读 + FAQ 骨架）|
+| `/intake <飞书链接/文本>` | 进件：把飞书文档/多维表格或一段文本拆成任务批次、落进任务清单 |
 | `/spec <需求>` | 把需求（可一次多条）转成可验证 spec，先拆条 + 影响面分析 |
 | `/build <id>` | 按 spec 实现一个功能（开发 agent：实现 + 测试 + 真库冒烟） |
 | `/fix <缺陷/需求>` | 缺陷/改动闭环（拆条 + 影响面 → 改 spec/测试 → 改码 → 回归） |
@@ -106,12 +119,14 @@ steward/                     # 工具本体（可分享，不含项目数据）
 ├─ tools/start.sh            #   启动
 ├─ tools/new-project.sh      #   命令行纳管项目
 ├─ dashboard/index.html      #   控制台 UI
+├─ desktop/                  #   桌面客户端（Electron；node-pty + xterm，原生 mac/Windows）
 └─ templates/                #   新项目脚手架（整套复制进新项目）
    ├─ CLAUDE.md              #     被管项目的编排手册（方法论主体）
    ├─ .claude/agents/dev.md  #     开发 agent
-   ├─ .claude/commands/      #     /init /scan /spec /build /fix /accept /autopilot
-   ├─ docs/specs/_TEMPLATE.md#     统一 spec 模板
-   └─ tools/board.mjs        #     从 spec 派生看板
+   ├─ .claude/commands/      #     /init /scan /spec /build /fix /accept /intake /autopilot …
+   ├─ docs/specs/            #     spec 模板：_TEMPLATE(功能)/_TEMPLATE-薄spec/_TEMPLATE-流程 + 00-功能模块地图(层1)
+   ├─ docs/faq/              #     层3 FAQ 模板
+   └─ tools/board.mjs        #     从 spec 派生看板（识别 type:guide）
 
 ~/.steward/projects.json     # 用户数据：项目注册表（与工具隔离，可用 STEWARD_DATA 覆盖）
 <你的项目>/docs/specs/*.md    # 各项目产物：规约（事实源，提交 git）
@@ -122,6 +137,16 @@ steward/                     # 工具本体（可分享，不含项目数据）
 - **提交**：`docs/specs/*`（源头，含 status）、`docs/lessons.md`（本项目踩坑）、`docs/changes`、`docs/reviews`、`CLAUDE.md`、`.claude/agents`+`commands`、`tools/board.mjs`。（**全局**经验库是 Steward 仓库里的 `lessons.md`，随工具提交。）
 - **不提交**（自动生成 / 运行态 / 本地）：`docs/board.json`、`docs/board.md`、`docs/tasks.json`、`docs/.state/`、`.claude/plan.md`、`.claude/settings.local.json`。
   > 新导入的项目会自带 `docs/.gitignore` / `.claude/.gitignore`，自动处理好这条边界。
+
+## 系统说明书（三层 · 给 AI 看的事实源）
+
+存量项目 `/scan` 逆向、或绿地共创，产出一套**给 AI 读的三层说明书**，同时服务「AI 迭代开发」和「现场答疑」两个场景：
+
+- **层1 · 功能模块地图**（`docs/specs/00-功能模块地图.md`）：总纲/最外层口子——全部功能模块清单 + 各模块要点，AI 进来先读它定位任务落在哪。
+- **层2 · 导读**（`type: guide`）：只给**核心/复杂场景**的模块深讲机制/库表/数据流；不走 dev/test/accept 流水线，看板里单列「📖 导读」。
+- **层3 · FAQ**（`docs/faq/`）：常见问答（症状 → 定位 → 解法），随现场答疑增量沉淀。
+
+功能 spec（用户故事 + AC + 数据契约，挂在总纲下）是**可验收开发单元**；已有导读打底、只做单次改动时，用**薄 spec 模板**（`_TEMPLATE-薄spec.md`：只写 AC + DoD + 数据契约，事实/库表指回导读）。
 
 ## 方法论 TL;DR
 
