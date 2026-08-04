@@ -370,10 +370,11 @@ function createWindow() {
       const xtermCss = fs.readFileSync(require.resolve('@xterm/xterm/css/xterm.css'), 'utf8');
       const xtermJs = fs.readFileSync(require.resolve('@xterm/xterm/lib/xterm.js'), 'utf8');
       const fitJs = fs.readFileSync(require.resolve('@xterm/addon-fit/lib/addon-fit.js'), 'utf8');
+      const uniJs = fs.readFileSync(require.resolve('@xterm/addon-unicode11/lib/addon-unicode11.js'), 'utf8');   // Unicode 11 宽度表：修 CJK 在 claude(Ink TUI) 里渲染成空白
       const nativeJs = fs.readFileSync(path.join(__dirname, 'native-term.js'), 'utf8');
       mainWin.webContents.insertCSS(xtermCss);
       const verJs = 'window.STEWARD_VERSION=' + JSON.stringify(app.getVersion()) + ';try{showAppVersion&&showAppVersion()}catch(e){}';
-      mainWin.webContents.executeJavaScript(verJs + '\n' + xtermJs + '\n' + fitJs + '\n' + nativeJs).catch(err => console.error('inject', err));
+      mainWin.webContents.executeJavaScript(verJs + '\n' + xtermJs + '\n' + fitJs + '\n' + uniJs + '\n' + nativeJs).catch(err => console.error('inject', err));
     } catch (err) { console.error('注入 xterm/native-term 失败：', err.message); }
   });
 }

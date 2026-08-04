@@ -14,10 +14,11 @@
     "dist:win": "electron-builder --win"
   },
   "dependencies": {
-    "node-pty": "^1.0.0",
-    "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
-    "@xterm/headless": "^5.5.0"
+    "@xterm/addon-unicode11": "^0.8.0",
+    "@xterm/headless": "^5.5.0",
+    "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -28,22 +29,49 @@
     "productName": "Steward",
     "npmRebuild": true,
     "afterPack": "build/afterPack.js",
-    "asarUnpack": ["**/node_modules/node-pty/**"],
+    "asarUnpack": [
+      "**/node_modules/node-pty/**"
+    ],
     "extraResources": [
-      { "from": "../tools", "to": "steward/tools" },
-      { "from": "../dashboard", "to": "steward/dashboard" },
-      { "from": "../templates", "to": "steward/templates" },
-      { "from": "../lessons.md", "to": "steward/lessons.md" },
-      { "from": "../CLAUDE.md", "to": "steward/CLAUDE.md" }
+      {
+        "from": "../tools",
+        "to": "steward/tools"
+      },
+      {
+        "from": "../dashboard",
+        "to": "steward/dashboard"
+      },
+      {
+        "from": "../templates",
+        "to": "steward/templates"
+      },
+      {
+        "from": "../lessons.md",
+        "to": "steward/lessons.md"
+      },
+      {
+        "from": "../CLAUDE.md",
+        "to": "steward/CLAUDE.md"
+      }
     ],
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
       "category": "public.app-category.developer-tools",
       "identity": null,
       "icon": "build/icon.png"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.png"
     },
     "nsis": {

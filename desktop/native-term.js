@@ -25,6 +25,7 @@
     host().appendChild(el);
     const term = new XTerm({ cursorBlink: true, fontSize: 13, fontFamily: 'Menlo,Consolas,"Courier New","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",monospace', theme: { background: '#111' }, scrollback: 5000, macOptionClickForcesSelection: true, rightClickSelectsWord: true });   // claude 开鼠标模式时，按住 Option 拖拽仍能选中文字 → 再 Cmd+C/「复制」
     let fit = null; try { if (FitCls) { fit = new FitCls(); term.loadAddon(fit); } } catch (e) {}
+    try { const U = window.Unicode11Addon && (window.Unicode11Addon.Unicode11Addon || window.Unicode11Addon); if (U) { term.loadAddon(new U()); term.unicode.activeVersion = '11'; } } catch (e) {}   // Unicode 11 宽度表：与 claude CLI(Ink)对齐 CJK 宽度，修中文渲染成空白
     term.open(el);
     // 拖文件进终端 → 把绝对路径(shell 转义)写到光标处，像原生终端。Electron31 file.path 已移除，走 preload 暴露的 webUtils。
     el.addEventListener('dragover', (e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (x) {} }, true);
