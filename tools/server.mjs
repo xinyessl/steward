@@ -193,7 +193,7 @@ function openWindow(proj, sessionId, label, engineId) {
   let cmd = cliArgs, tmuxSess = '';
   if (TMUX_BIN) {
     tmuxSess = `steward-${port}`;
-    cmd = [TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', tmuxSess, ...cliArgs];
+    cmd = [TMUX_BIN, '-u', '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', tmuxSess, ...cliArgs];   // -u：强制 UTF-8，防非 UTF-8 locale 下 tmux 把 CJK 渲染成空白
   }
   const args = ['-W', '-i', '127.0.0.1', '-p', String(port), '-t', 'fontFamily=Menlo,Consolas,"Courier New","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",monospace', ...cmd];   // 字体链加中文兜底，否则打包版终端里中文渲染成空白
   const proc = spawn(TTYD_BIN, args, { cwd: proj.path, stdio: 'ignore', env: childEnv(proj.id) });
@@ -227,7 +227,7 @@ function adoptWindows() {
     const projectId = m.projectId || fallbackPid;
     let proc = null;
     if (!portBound(port)) {  // ttyd 没了 → 重起一个接回（new-session -A 已存在=attach，claude 不重启）
-      const args = ['-W', '-i', '127.0.0.1', '-p', String(port), TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', sess];
+      const args = ['-W', '-i', '127.0.0.1', '-p', String(port), TMUX_BIN, '-u', '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', sess];   // -u：强制 UTF-8（同上）
       try { proc = spawn(TTYD_BIN, args, { cwd: (projById(projectId) || {}).path || ROOT, stdio: 'ignore', env: childEnv(projectId) }); proc.on('error', e => console.error('[ttyd adopt]', e?.message || e)); } catch {}
     } // else：ttyd 还在（被 SIGKILL 残留）→ 直接认领，浏览器 iframe 不断连，无缝
     openWindows.set(String(port), { key: String(port), port, projectId, sessionId: m.sessionId || '', label: m.label || '恢复的对话', engine: m.engine || 'claude', stateFile: m.stateFile || '', proc, tmuxSess: sess });

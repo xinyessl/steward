@@ -144,7 +144,7 @@ if (TMUX_BIN && process.platform !== 'win32' && !process.env.STEWARD_NO_TMUX) {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
     fs.writeFileSync(TMUX_CONF, ['set -g status off', 'set -sg escape-time 0', 'set -g history-limit 50000', 'set -g destroy-unattached off', 'set -g mouse off'].join('\n') + '\n');
-    const t = spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-d', '-s', '__smoke__', 'true'], { timeout: 6000, env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } });
+    const t = spawnSync(TMUX_BIN, ['-u', '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-d', '-s', '__smoke__', 'true'], { timeout: 6000, env: { ...process.env, PATH: SHELL_PATH || process.env.PATH } });
     if (t.status === 0) { USE_TMUX = true; try { spawnSync(TMUX_BIN, ['-L', TMUX_SOCK, 'kill-session', '-t', '__smoke__'], { timeout: 3000 }); } catch {} }
   } catch {}
 }
@@ -216,7 +216,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId, engine }) {
       if (USE_TMUX) {
         recTmux = tmuxName(key);
         // tmux new-session -A：会话在则 attach(强杀存活的对话原样回来、忽略后面的命令)、不在则建并跑(内层再走登录 shell 保 PATH)
-        proc = pty.spawn(TMUX_BIN, ['-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', recTmux, sh, '-lic', innerCmd], opts);
+        proc = pty.spawn(TMUX_BIN, ['-u', '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', recTmux, sh, '-lic', innerCmd], opts);   // -u：强制 UTF-8，否则 GUI 起的 tmux 服务器非 UTF-8 会把 CJK 渲染成空白（v0.2.47 引入 tmux 后的回归）
       } else {
         proc = pty.spawn(sh, ['-lic', innerCmd], opts);
       }
