@@ -433,8 +433,8 @@ function scaffoldProject(dest, name, id) {
   copyMdDir(path.join(T, '.claude/agents'), path.join(dest, '.claude/agents'));
   copyMdDir(path.join(T, '.claude/commands'), path.join(dest, '.claude/commands'));
   copyIfAbsent(path.join(T, 'docs/lessons.md'), path.join(dest, 'docs/lessons.md'));   // 项目级经验库（项目专属坑，随项目提交）
-  copyIfAbsent(path.join(T, 'docs/specs/_TEMPLATE.md'), path.join(dest, 'docs/specs/_TEMPLATE.md'));
-  copyIfAbsent(path.join(T, 'docs/specs/README.md'), path.join(dest, 'docs/specs/README.md'));
+  copyMdDir(path.join(T, 'docs/specs'), path.join(dest, 'docs/specs'));   // 全部 spec 模板：_TEMPLATE(.md/流程/薄spec) + 00-功能模块地图(层1) + README
+  copyMdDir(path.join(T, 'docs/faq'), path.join(dest, 'docs/faq'));       // 层3 FAQ：README(外部FAQ占位) + _TEMPLATE-faq
   copyIfAbsent(path.join(T, 'tools/board.mjs'), path.join(dest, 'tools/board.mjs'));
   copyIfAbsent(path.join(T, 'tools/feishu-fetch.mjs'), path.join(dest, 'tools/feishu-fetch.mjs'));   // /intake 飞书拉取(文档/多维表格)用
   copyIfAbsent(path.join(T, 'docs/.gitignore'), path.join(dest, 'docs/.gitignore'));         // 忽略 board/state/tasks 派生文件
@@ -1175,6 +1175,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     return res.end(fs.readFileSync(file));
   }
+  // 兜底：整页导航（Accept: text/html，如误点了相对 .md 链接）落到未知地址时 302 回首页，
+  // 避免在 app 壳里跳成死的 "Not Found" 卡住、只能重启；资源/接口(XHR)请求仍照常返回 404。
+  if ((req.headers['accept'] || '').includes('text/html')) { res.writeHead(302, { Location: '/' }); return res.end(); }
   send(res, 404, 'Not Found', 'text/plain');
 });
 

@@ -639,9 +639,10 @@ function setSpecSearch(v){ specSearch=v; renderSpecs(); }
 
 const ST_CN={todo:'未开始',doing:'进行中',pass:'通过',fail:'失败',wait:'待人'};
 // 分类：待验收=accept 节点为 wait；已验收=status accepted；其余算进行中
-function specCat(sp){ if((sp.nodes||{}).accept==='wait')return 'await'; if(sp.status==='accepted')return 'done'; return 'doing'; }
+function specCat(sp){ if(sp.type==='guide')return 'guide'; if((sp.nodes||{}).accept==='wait')return 'await'; if(sp.status==='accepted')return 'done'; return 'doing'; }
 // 阶段徽标：待验收/已验收，否则取当前所在节点（失败>进行中>待开始）
 function stageBadge(sp){
+  if(sp.type==='guide')return{cls:'sst',label:'📖 导读'};
   if(specCat(sp)==='await')return{cls:'wbadge',label:'待验收'};
   if(sp.status==='accepted')return{cls:'anode done',label:'已验收'};
   const nodes=(boardData&&boardData.nodes)||Object.keys(NODE_CN);
@@ -671,7 +672,7 @@ function modDrop(e,ek){ e.preventDefault(); document.querySelectorAll('.mgrp-h.d
 function specRowHtml(sp){
   const nodes=boardData.nodes||Object.keys(NODE_CN);
   const pr=(sp.priority||'').toLowerCase(), wait=specCat(sp)==='await', sb=stageBadge(sp);
-  const dots=nodes.map(n=>{const st=(sp.nodes||{})[n]||'todo';return `<span class="mdot ${st}" title="${NODE_CN[n]||n}：${ST_CN[st]||st}">${ICON[st]||''}</span>`;}).join('');
+  const dots=sp.type==='guide'?'':nodes.map(n=>{const st=(sp.nodes||{})[n]||'todo';return `<span class="mdot ${st}" title="${NODE_CN[n]||n}：${ST_CN[st]||st}">${ICON[st]||''}</span>`;}).join('');
   const jid=jss(sp.id);   // #21：spec.id 进 onclick 须 JS+HTML 双转义
   const acts=wait?`<div class="sact"><button class="btn-acc" onclick="acceptSpec('${jid}')"><i class="ti ti-check"></i> 通过验收</button><button class="btn-rej" onclick="rejectSpec('${jid}')"><i class="ti ti-arrow-back-up"></i> 打回（提问题）</button></div>`:'';
   const cur=sp.priority||'';
@@ -697,9 +698,9 @@ function highlightSpec(id){ const el=document.getElementById('spec-row-'+id); if
 function renderSpecs(){
   if(!boardData)return;
   const specs=boardData.specs||[];
-  const cnt={all:specs.length,await:0,doing:0,done:0};
+  const cnt={all:specs.length,guide:0,await:0,doing:0,done:0};
   specs.forEach(sp=>cnt[specCat(sp)]++);
-  const chips=[['all','全部'],['await','待验收'],['doing','进行中'],['done','已验收']];
+  const chips=[['all','全部'],['guide','📖 导读'],['await','待验收'],['doing','进行中'],['done','已验收']];
   const _mk=lastModOrder||[], _allCol=_mk.length && _mk.every(k=>collapsedModules.has(k));
   document.getElementById('spec-filter').innerHTML=
     `<span class="gtgl ${groupByMod?'on':''}" style="margin-left:0" onclick="toggleGroupMod()" title="按模块分组 / 平铺 切换"><i class="ti ti-layout-list"></i> 按模块</span>`   // 钉最左，位置固定
@@ -774,6 +775,19 @@ function makeCollapsible(root){
   }
   root.innerHTML=''; root.appendChild(frag);
 }
+// spec 正文里的相对 .md 链接（总纲里的 RE-01、导读交叉链接、FAQ 等）：全局捕获阶段拦截点击，在模态框内打开对应 spec，避免浏览器跳相对地址导致整页 Not Found。事件委托 → 覆盖所有渲染路径。
+document.addEventListener('click', function(e){
+  const a = e.target && e.target.closest && e.target.closest('a[href]');
+  if(!a) return;
+  const href = a.getAttribute('href') || '';
+  if(!href || href.startsWith('#') || /^https?:\/\//i.test(href)) return;   // 锚点/外链走默认
+  if(!/\.md(\?|#|$)/i.test(href)) return;                                   // 只接管相对 .md 链接
+  e.preventDefault(); e.stopPropagation();
+  const base = decodeURIComponent(href.split('#')[0].split('?')[0].split('/').pop() || '');
+  const sp = ((boardData && boardData.specs) || []).find(s => ((s.file || '').split('/').pop()) === base);
+  if(sp) openSpec(sp.id);
+  else if(window.toast) toast('该文档不在 spec 列表里（如 FAQ / 库结构），暂不支持模态内打开：' + base);
+}, true);
 function closeSpec(){ document.getElementById('spec-modal').classList.remove('on'); }
 // —— NEEDS-HUMAN 裁决：弹窗录入决定 → 带入 CLI 终端 → 终端定稿 ——
 let _nhCtx=null;
@@ -970,14 +984,15 @@ async function loadBoard(){
     document.getElementById('gen').textContent='更新于 '+(b.generatedAt||'');
     const s=b.summary||{};
     document.getElementById('kpis').innerHTML=[
-      ['总 spec',s.total,''],['已验收',s.accepted,'ok'],['开发中',s.inDev,'pri'],['待开发',s.ready,'wn'],['草拟',s.draft,'']
+      ['总 spec',s.total,''],['已验收',s.accepted,'ok'],['开发中',s.inDev,'pri'],['待开发',s.ready,'wn'],['草拟',s.draft,''],['📖 导读',s.guides||0,'']
     ].map(k=>`<div class="kpi"><div class="l">${k[0]}</div><div class="v ${k[2]}">${k[1]??0}</div></div>`).join('');
     document.getElementById('blk').innerHTML=(b.blockers&&b.blockers.length)?`<div class="blk"><i class="ti ti-alert-triangle"></i> 阻塞：${b.blockers.map(esc).join('；')}</div>`:'';
     const nodes=b.nodes||Object.keys(NODE_CN);
     const specs=b.specs||[];
     const pct=(a,t)=>t?Math.round(a/t*100):0;
-    const grp={}; specs.forEach(sp=>{const p=(sp.priority||'其他').toUpperCase();(grp[p]=grp[p]||{t:0,a:0});grp[p].t++;if(sp.status==='accepted')grp[p].a++;});
-    const tot=specs.length, acc=specs.filter(x=>x.status==='accepted').length;
+    const fspecs=specs.filter(sp=>sp.type!=='guide');   // 导读不进"验收进度"总体条
+    const grp={}; fspecs.forEach(sp=>{const p=(sp.priority||'其他').toUpperCase();(grp[p]=grp[p]||{t:0,a:0});grp[p].t++;if(sp.status==='accepted')grp[p].a++;});
+    const tot=fspecs.length, acc=fspecs.filter(x=>x.status==='accepted').length;
     let ov=`<div class="mrow"><div class="ml">总体</div><div class="mbar"><div class="mfill" style="width:${pct(acc,tot)}%"></div></div><div class="mv">${acc}/${tot} 已验收</div></div>`;
     ['P0','P1','P2'].concat(Object.keys(grp).filter(k=>!['P0','P1','P2'].includes(k))).forEach(p=>{const m=grp[p];if(!m)return;ov+=`<div class="mrow"><div class="ml"><span class="tag ${esc(p.toLowerCase())}">${esc(p)}</span></div><div class="mbar"><div class="mfill" style="width:${pct(m.a,m.t)}%"></div></div><div class="mv">${m.a}/${m.t}</div></div>`;});
     document.getElementById('overview').innerHTML=ov;
