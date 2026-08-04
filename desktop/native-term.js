@@ -23,7 +23,7 @@
     const el = document.createElement('div'); el.className = 'nterm'; el.dataset.key = key;
     el.style.cssText = 'position:absolute;inset:0;display:none;background:#111';
     host().appendChild(el);
-    const term = new XTerm({ cursorBlink: true, fontSize: 13, fontFamily: 'Menlo,Consolas,"Courier New",monospace', theme: { background: '#111' }, scrollback: 5000, macOptionClickForcesSelection: true, rightClickSelectsWord: true });   // claude 开鼠标模式时，按住 Option 拖拽仍能选中文字 → 再 Cmd+C/「复制」
+    const term = new XTerm({ cursorBlink: true, fontSize: 13, fontFamily: 'Menlo,Consolas,"Courier New","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",monospace', theme: { background: '#111' }, scrollback: 5000, macOptionClickForcesSelection: true, rightClickSelectsWord: true });   // claude 开鼠标模式时，按住 Option 拖拽仍能选中文字 → 再 Cmd+C/「复制」
     let fit = null; try { if (FitCls) { fit = new FitCls(); term.loadAddon(fit); } } catch (e) {}
     term.open(el);
     // 拖文件进终端 → 把绝对路径(shell 转义)写到光标处，像原生终端。Electron31 file.path 已移除，走 preload 暴露的 webUtils。

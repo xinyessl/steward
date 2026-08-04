@@ -194,7 +194,7 @@ function openWindow(proj, sessionId, label, engineId) {
     tmuxSess = `steward-${port}`;
     cmd = [TMUX_BIN, '-L', TMUX_SOCK, '-f', TMUX_CONF, 'new-session', '-A', '-s', tmuxSess, ...cliArgs];
   }
-  const args = ['-W', '-i', '127.0.0.1', '-p', String(port), ...cmd];
+  const args = ['-W', '-i', '127.0.0.1', '-p', String(port), '-t', 'fontFamily=Menlo,Consolas,"Courier New","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",monospace', ...cmd];   // 字体链加中文兜底，否则打包版终端里中文渲染成空白
   const proc = spawn(TTYD_BIN, args, { cwd: proj.path, stdio: 'ignore', env: childEnv(proj.id) });
   proc.on('error', e => console.error('[ttyd spawn]', e?.message || e));   // spawn 失败不可掀翻进程
   const key = String(port);
