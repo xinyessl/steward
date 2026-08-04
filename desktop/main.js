@@ -199,7 +199,7 @@ function ptyCreate(e, { key, projectId, cwd, sessionId, engine }) {
   const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
   let proc, recTmux = '';
   try {
-    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH, STEWARD_WIN: key, STEWARD_STATE_DIR: STATE_DIR } };
+    const opts = { name: 'xterm-256color', cols: 100, rows: 30, cwd: cwd || os.homedir(), env: { ...process.env, PATH: SHELL_PATH || process.env.PATH, STEWARD_WIN: key, STEWARD_STATE_DIR: STATE_DIR, SHELL_SESSIONS_DISABLE: '1' } };   // 关 macOS「每会话独立历史」→ 命令行终端用共享 ~/.zsh_history（↑ 翻历史、跨窗口共享）
     if (eng === 'cmd') {
       // 普通命令行终端：直接跑用户登录 shell，让人在项目目录里自己敲命令(不挂 agent/钩子，不进 tmux)
       if (process.platform === 'win32') proc = pty.spawn(process.env.COMSPEC || 'cmd.exe', [], opts);

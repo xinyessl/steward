@@ -138,6 +138,7 @@ function childEnv(projectId) {
   for (const k of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH']) delete e[k];
   e.STEWARD_LESSONS = LESSONS_FILE;   // 让子 claude 知道 Steward 全局经验库在哪（兼容 STEWARD_DATA 覆盖）
   e.STEWARD_DATA = DATA_DIR;          // 让子进程脚本（如 feishu-fetch）找到 ~/.steward 数据目录
+  e.SHELL_SESSIONS_DISABLE = '1';     // 关 macOS「每会话独立历史」→ 命令行终端改用共享的 ~/.zsh_history（↑ 能翻出历史、跨窗口 + 跟系统终端共享）
   if (projectId) e.STEWARD_PROJECT_ID = projectId; else delete e.STEWARD_PROJECT_ID;   // 当前终端属于哪个项目；projectId 缺失则删掉，绝不继承泄漏旧值
   return e;
 }
